@@ -1,0 +1,9 @@
+# 本地自动合成与运行缓存产物（不纳入版本控制）
+antigravity-hans-overlay.js
+hans-base-overlay.cache.js
+.overlay-sync.state.json
+*.bak*
+*.log
+*.exe
+.DS_Store
+Thumbs.db

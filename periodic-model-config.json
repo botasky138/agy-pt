@@ -1,0 +1,110 @@
+{
+  "version": 3,
+  "title": "模型周期表",
+  "subtitle": "Model periodic table",
+  "seriesLabel": "Gemini 4",
+  "integrateAllGoogleModels": true,
+  "classicModelWhitelist": [
+    "3.8 flash"
+  ],
+  "guaranteedReleasedElements": [
+    {
+      "symbol": "H",
+      "baseName": "Gemini 4 Hydrogen",
+      "colorLabel": "科技蓝",
+      "accent": "#4c8bf5",
+      "efforts": ["low", "medium", "high", "extra"]
+    },
+    {
+      "symbol": "C",
+      "baseName": "Gemini 4 Carbon",
+      "colorLabel": "深邃紫",
+      "accent": "#a855f7",
+      "efforts": ["low", "medium", "high"]
+    },
+    {
+      "symbol": "Ne",
+      "baseName": "Gemini 4 Neon",
+      "colorLabel": "霓虹红",
+      "accent": "#f43f5e",
+      "efforts": ["low", "medium", "high", "extra"]
+    },
+    {
+      "symbol": "Ar",
+      "baseName": "Gemini 4 Argon",
+      "colorLabel": "翡翠青",
+      "accent": "#14b8a6",
+      "efforts": ["low", "medium", "high"]
+    }
+  ],
+  "guaranteedClassicModels": [
+    {
+      "baseName": "Gemini 3.8 Flash",
+      "shortName": "3.8 Flash",
+      "versionTag": "3.8",
+      "cardLabel": "Flash",
+      "accent": "#38bdf8",
+      "efforts": ["low", "medium", "high"]
+    }
+  ],
+  "guaranteedOrchestratorTiers": [
+    {
+      "tier": "Neon",
+      "label": "Neon",
+      "sub": "Orchestrator · Neon",
+      "desc": "无推理档位 · 直接切换",
+      "accent": "#fb7185"
+    },
+    {
+      "tier": "Argon",
+      "label": "Argon",
+      "sub": "Orchestrator · Argon",
+      "desc": "无推理档位 · 直接切换",
+      "accent": "#2dd4bf"
+    }
+  ],
+  "knownSubmenuEfforts": {
+    "gemini 4 neon": ["low", "medium", "high", "extra"],
+    "gemini 4 hydrogen": ["low", "medium", "high", "extra"],
+    "gemini 4 argon": ["low", "medium", "high"],
+    "gemini 4 carbon": ["low", "medium", "high"],
+    "gemini 3.8 flash": ["low", "medium", "high"],
+    "claude opus 5.5": ["low", "medium", "high"],
+    "claude sonnet 5.5": ["low", "medium", "high"]
+  },
+  "comingSoon": [
+    {
+      "symbol": "He",
+      "codename": "Helium",
+      "zhName": "氦 · 轻量级",
+      "note": "即将发布 · 轻量高速模型（传闻接替 Flash 轻量档），上线后自动亮起",
+      "accent": "#38bdf8"
+    },
+    {
+      "symbol": "Kr",
+      "codename": "Krypton",
+      "zhName": "氪 · 下一代旗舰",
+      "note": "即将发布 · 下一代高阶深度推理旗舰（内部测试节点），上线后自动亮起",
+      "accent": "#f59e0b"
+    }
+  ],
+  "elementBindings": {
+    "H": ["^(?!.*orchestrator).*\\bhydrogen\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*h\\b"],
+    "He": ["^(?!.*orchestrator).*\\bhelium\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*he\\b"],
+    "C": ["^(?!.*orchestrator).*\\bcarbon\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*c\\b"],
+    "Ne": ["^(?!.*orchestrator).*\\bneon\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*ne\\b"],
+    "Ar": ["^(?!.*orchestrator).*\\bargon\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*ar\\b"],
+    "Kr": ["^(?!.*orchestrator).*\\bkrypton\\b", "^(?!.*orchestrator).*\\bkrypton-a\\b", "^(?!.*orchestrator).*gemini\\s*4\\s*kr\\b"]
+  },
+  "virtualSlotDefaults": {
+    "efforts": ["low", "medium", "high", "extra"]
+  },
+  "customAccents": {
+    "H": "#4c8bf5",
+    "He": "#38bdf8",
+    "C": "#a855f7",
+    "Ne": "#f43f5e",
+    "Ar": "#14b8a6",
+    "Kr": "#f59e0b"
+  }
+}
