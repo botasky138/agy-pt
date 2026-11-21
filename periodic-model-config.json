@@ -47,20 +47,30 @@
       "efforts": ["low", "medium", "high"]
     }
   ],
-  "guaranteedOrchestratorTiers": [
+  "guaranteedOrchestratorModels": [
     {
-      "tier": "Neon",
-      "label": "Neon",
-      "sub": "Orchestrator · Neon",
-      "desc": "无推理档位 · 直接切换",
-      "accent": "#fb7185"
+      "baseName": "Gemini 4 Neon",
+      "shortName": "Neon",
+      "vendor": "Google",
+      "accent": "#fb7185",
+      "hasLevel3": true,
+      "efforts": ["low", "medium", "high", "extra"]
     },
     {
-      "tier": "Argon",
-      "label": "Argon",
-      "sub": "Orchestrator · Argon",
-      "desc": "无推理档位 · 直接切换",
-      "accent": "#2dd4bf"
+      "baseName": "Gemini 4 Argon",
+      "shortName": "Argon",
+      "vendor": "Google",
+      "accent": "#2dd4bf",
+      "hasLevel3": true,
+      "efforts": ["low", "medium", "high"]
+    },
+    {
+      "baseName": "Claude Opus 5.5",
+      "shortName": "Opus 5.5",
+      "vendor": "Anthropic",
+      "accent": "#d97757",
+      "hasLevel3": true,
+      "efforts": ["low", "medium", "high"]
     }
   ],
   "knownSubmenuEfforts": {

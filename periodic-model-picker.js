@@ -7,6 +7,9 @@
   const isAllowedOrigin =
     proto === 'file:' ||
     proto === 'vscode-file:' ||
+    proto === 'vscode-webview:' ||
+    proto === 'app:' ||
+    proto === 'antigravity:' ||
     proto === 'plugin:' ||
     hostName === '127.0.0.1' ||
     hostName === 'localhost' ||
@@ -14,13 +17,14 @@
     hostName === '';
   if (!isAllowedOrigin) return;
 
-  const MODULE_VERSION = '3.1.0-20261120';
-  const MODULE_BUILD = 310;
+  const MODULE_VERSION = '3.3.0-20261121';
+  const MODULE_BUILD = 330;
   const HOST_ID = 'ag-periodic-model-picker-host';
   const CLOAK_STYLE_ID = 'ag-periodic-model-picker-cloak-style';
   const STORAGE_COMING_SOON_KEY = 'ag_periodic_picker_coming_soon_v2';
   const STORAGE_USAGE_CACHE_KEY = 'ag_periodic_picker_usage_cache_v31';
   const STORAGE_SUBMENU_EFFORTS_KEY = 'ag_periodic_picker_submenu_efforts_v3';
+  const STORAGE_ORCHESTRATOR_SUBMENU_KEY = 'ag_periodic_picker_orch_submenu_v4';
 
   // 清除 v3.0.0 可能误存的旧版用量缓存
   try {
@@ -41,7 +45,7 @@
     }
   }
 
-  // 读取外部配置（由 Sync-HansOverlay.ps1 从 periodic-model-config.json 注入，缺省时使用内置默认）
+  // 读取外部配置（由 Sync-HansOverlay.ps1 / macos/sync-hans-overlay.sh / macos/agy-pt-cdp.pl 从 periodic-model-config.json 注入，缺省时使用内置默认）
   const DEFAULT_CONFIG = {
     version: 3,
     title: '模型周期表',
@@ -89,19 +93,45 @@
         efforts: ['low', 'medium', 'high'],
       },
     ],
+    guaranteedOrchestratorModels: [
+      {
+        baseName: 'Gemini 4 Neon',
+        shortName: 'Neon',
+        vendor: 'Google',
+        accent: '#fb7185',
+        hasLevel3: true,
+        efforts: ['low', 'medium', 'high', 'extra'],
+      },
+      {
+        baseName: 'Gemini 4 Argon',
+        shortName: 'Argon',
+        vendor: 'Google',
+        accent: '#2dd4bf',
+        hasLevel3: true,
+        efforts: ['low', 'medium', 'high'],
+      },
+      {
+        baseName: 'Claude Opus 5.5',
+        shortName: 'Opus 5.5',
+        vendor: 'Anthropic',
+        accent: '#d97757',
+        hasLevel3: true,
+        efforts: ['low', 'medium', 'high'],
+      },
+    ],
     guaranteedOrchestratorTiers: [
       {
         tier: 'Neon',
         label: 'Neon',
         sub: 'Orchestrator · Neon',
-        desc: '无推理档位 · 直接切换',
+        desc: 'Gemini 4 Neon',
         accent: '#fb7185',
       },
       {
         tier: 'Argon',
         label: 'Argon',
         sub: 'Orchestrator · Argon',
-        desc: '无推理档位 · 直接切换',
+        desc: 'Gemini 4 Argon',
         accent: '#2dd4bf',
       },
     ],
@@ -170,6 +200,9 @@
     guaranteedClassicModels: Array.isArray(userConfig.guaranteedClassicModels)
       ? userConfig.guaranteedClassicModels
       : DEFAULT_CONFIG.guaranteedClassicModels,
+    guaranteedOrchestratorModels: Array.isArray(userConfig.guaranteedOrchestratorModels)
+      ? userConfig.guaranteedOrchestratorModels
+      : DEFAULT_CONFIG.guaranteedOrchestratorModels,
     guaranteedOrchestratorTiers: Array.isArray(userConfig.guaranteedOrchestratorTiers)
       ? userConfig.guaranteedOrchestratorTiers
       : DEFAULT_CONFIG.guaranteedOrchestratorTiers,
@@ -390,7 +423,7 @@
     thinking: { key: 'thinking', zh: '思考', en: 'Thinking', desc: '链式推理', order: 4, bars: 3 },
     reasoning: { key: 'reasoning', zh: '推理', en: 'Reasoning', desc: '深度推理', order: 4.5, bars: 3 },
     high: { key: 'high', zh: '高', en: 'High', desc: '深度推理', order: 5, bars: 3 },
-    extra: { key: 'extra', zh: 'Extra', en: 'Extra', desc: '高配深思', order: 6, bars: 4 },
+    extra: { key: 'extra', zh: '超高', en: 'Extra High', desc: '高配深思', order: 6, bars: 4 },
     max: { key: 'max', zh: '最高', en: 'Max', desc: '极限算力', order: 7, bars: 4 },
   };
 
@@ -495,6 +528,8 @@
 
   // 缓存上次从原版二级子菜单真实读出的模型档位表（仅加速首帧显示，每次打开都会后台重新静默探测同步）
   let cachedSubmenuEfforts = safeLoadJson(STORAGE_SUBMENU_EFFORTS_KEY, {});
+  // 缓存上次从原版 Orchestrator 二/三级子菜单真实读出的底层模型及各自推理档位
+  let cachedOrchestratorModels = safeLoadJson(STORAGE_ORCHESTRATOR_SUBMENU_KEY, null);
   // 缓存上次从原版 View Usage 真实读出的额度数据（不含任何编造默认值，首次未探测前为 null）
   let cachedUsageSnapshot = safeLoadJson(STORAGE_USAGE_CACHE_KEY, null);
 
@@ -545,11 +580,12 @@
     lastNativeActionItems: [],
     modelsBySymbol: new Map(),
     googleClassicModels: [], // 元素表下方的 3.8 Flash（唯一 1 个模块）
-    orchestratorModels: [], // 元素表下方的 Orchestrator 合并模块（Neon / Argon，无推理档位）
+    orchestratorModels: [], // 元素表下方的 Orchestrator 合并模块（支持多底层模型 + 三级推理档位）
     otherModels: [], // 底部其他厂商模型
     actionItems: [], // 原版菜单其余功能项
     activeModelKey: '', // 当前正在使用的 canonicalKey
     selectedGroup: null, // 当前展开档位选择面板的模型分组
+    selectedOrchSubModelKey: '', // Orchestrator 面板中当前选中的底层模型 key
     virtualElement: null, // 点选未发布元素时打开的虚拟选择窗口
     virtualPickedEffort: null,
     virtualFeedback: '',
@@ -626,7 +662,43 @@
     const s = String(str || '');
     if (/\bneon\b|氖/i.test(s)) return 'Neon';
     if (/\bargon\b|氩/i.test(s)) return 'Argon';
+    if (/\bhydrogen\b|氢/i.test(s)) return 'Hydrogen';
+    if (/\bopus\s*5\.5\b/i.test(s)) return 'Opus 5.5';
+    if (/\bsonnet\s*5\.5\b/i.test(s)) return 'Sonnet 5.5';
+    if (/\bclaude\b/i.test(s)) return s.replace(/^.*?(claude\b[^()（）]*)/i, '$1').trim();
     return null;
+  }
+
+  function getOrchestratorSubModelAccent(baseName, vendor = 'Google') {
+    const low = String(baseName || '').toLowerCase();
+    if (/\bneon\b/.test(low)) return '#fb7185';
+    if (/\bargon\b/.test(low)) return '#2dd4bf';
+    if (/\bhydrogen\b/.test(low)) return '#4c8bf5';
+    if (/\bcarbon\b/.test(low)) return '#a855f7';
+    if (/\bflash\b/.test(low)) return '#38bdf8';
+    if (vendor === 'Anthropic' || /\bclaude\b/.test(low)) return '#d97757';
+    if (vendor === 'OpenAI' || /\bgpt\b/.test(low)) return '#10a37f';
+    if (vendor === 'DeepSeek' || /\bdeepseek\b/.test(low)) return '#6366f1';
+    return '#a855f7';
+  }
+
+  function getOrchestratorSubModelShortName(baseName) {
+    const clean = String(baseName || '').trim();
+    if (!clean) return 'Model';
+    if (/^gemini\s+4\s+/i.test(clean)) return clean.replace(/^gemini\s+4\s+/i, '').trim();
+    if (/^gemini\s+/i.test(clean)) return clean.replace(/^gemini\s+/i, '').trim();
+    if (/^claude\s+/i.test(clean)) return clean.replace(/^claude\s+/i, '').trim();
+    return clean;
+  }
+
+  function buildOrchestratorCanonicalKey(subModelBaseName, effortKey = null) {
+    const sub = String(subModelBaseName || '').trim();
+    if (!sub) return normalizeKey('Orchestrator');
+    if (effortKey) {
+      const en = EFFORT_META[effortKey]?.en || effortKey;
+      return normalizeKey(`Orchestrator | ${sub} (${en})`);
+    }
+    return normalizeKey(`Orchestrator | ${sub}`);
   }
 
   function splitBadgesAndName(rawLine) {
@@ -761,11 +833,52 @@
     const isOrchestrator = isOrchestratorText(cleaned) || isOrchestratorText(subtitleHint);
     let orchestratorTier = null;
     let orchestratorId = null;
+    let orchSubModelBaseName = null;
+    let orchSubModelShortName = null;
+    let orchSubVendor = 'Google';
+    let orchSubAccent = '#a855f7';
 
     if (isOrchestrator) {
-      orchestratorTier = detectOrchestratorTier(`${cleaned} ${subtitleHint}`);
       orchestratorId = 'orch:main';
       baseName = 'Orchestrator';
+      // 剥离前导 "Orchestrator" / "编排" 后递归解析底层模型与当前推理档位（如 "Orchestrator Gemini 4 Neon Extra High" 或 "Orchestrator Claude Opus 5.5 Medium"）
+      let innerRaw = cleaned
+        .replace(/^(?:orchestrator|编排器?|智能编排)[\s:：·/-]*/i, '')
+        .replace(/^\(([^()]+)\)$/, '$1')
+        .replace(/^（([^（）]+)）$/, '$1')
+        .replace(/\s*\.\.\.\s*$/, '')
+        .trim();
+      if (!innerRaw && subtitleHint) {
+        innerRaw = String(subtitleHint)
+          .replace(/^(?:orchestrator|编排器?|智能编排)[\s:：·/-]*/i, '')
+          .replace(/\s*\.\.\.\s*$/, '')
+          .trim();
+      }
+      if (innerRaw && !isOrchestratorText(innerRaw)) {
+        const innerParsed = parseModelLabel(innerRaw, '');
+        if (innerParsed && innerParsed.baseName) {
+          orchSubModelBaseName = innerParsed.baseName;
+          orchSubModelShortName = getOrchestratorSubModelShortName(innerParsed.baseName);
+          orchSubVendor = innerParsed.vendor || 'Google';
+          orchSubAccent = getOrchestratorSubModelAccent(innerParsed.baseName, orchSubVendor);
+          orchestratorTier = orchSubModelShortName;
+          if (innerParsed.effortKey) {
+            effortKey = innerParsed.effortKey;
+            effortSource = innerParsed.effortSource || 'tail';
+          }
+        }
+      }
+      if (!orchestratorTier) {
+        orchestratorTier = detectOrchestratorTier(`${cleaned} ${subtitleHint}`);
+        if (orchestratorTier) {
+          orchSubModelShortName = orchestratorTier;
+          orchSubModelBaseName = /^(?:neon|argon|hydrogen|carbon)$/i.test(orchestratorTier)
+            ? `${CONFIG.seriesLabel || 'Gemini 4'} ${orchestratorTier}`
+            : orchestratorTier;
+          orchSubVendor = /^claude|opus|sonnet/i.test(orchSubModelBaseName) ? 'Anthropic' : 'Google';
+          orchSubAccent = getOrchestratorSubModelAccent(orchSubModelBaseName, orchSubVendor);
+        }
+      }
     } else {
       // 1. 扫描所有括号对（从右向左）
       const parenMatches = Array.from(cleaned.matchAll(/[（(]([^()（）]+)[）)]/g));
@@ -886,9 +999,9 @@
     let shortName = baseName;
 
     if (isOrchestrator) {
-      vendor = 'Google';
-      vendorColor = orchestratorTier === 'Neon' ? '#fb7185' : orchestratorTier === 'Argon' ? '#2dd4bf' : '#a855f7';
-      shortName = orchestratorTier ? `Orchestrator (${orchestratorTier})` : 'Orchestrator';
+      vendor = orchSubVendor || 'Google';
+      vendorColor = orchSubAccent || '#a855f7';
+      shortName = orchSubModelShortName ? `Orchestrator (${orchSubModelShortName})` : 'Orchestrator';
     } else if (/^claude\b/i.test(baseName)) {
       vendor = 'Anthropic';
       vendorColor = '#d97757';
@@ -915,7 +1028,7 @@
     }
 
     const canonicalSource = isOrchestrator
-      ? (orchestratorTier ? `Orchestrator (${orchestratorTier})` : cleaned)
+      ? buildOrchestratorCanonicalKey(orchSubModelBaseName || orchestratorTier || cleaned, effortKey)
       : effortKey
         ? `${baseName} (${EFFORT_META[effortKey]?.en || effortKey})`
         : baseName || cleaned;
@@ -933,6 +1046,10 @@
       isOrchestrator,
       orchestratorTier,
       orchestratorId,
+      orchSubModelBaseName,
+      orchSubModelShortName,
+      orchSubVendor,
+      orchSubAccent,
       series,
       vendor,
       vendorColor,
@@ -942,7 +1059,7 @@
 
   function looksLikeUsageItem(text) {
     const t = String(text || '').replace(/\s+/g, ' ').trim();
-    return /^(view\s+usage|usage|查看用量|用量|额度用量|查看额度)$/i.test(t);
+    return /^(view\s+(?:model\s+)?usage|model\s+usage|usage|查看用量|查看模型用量|模型用量|用量|额度用量|查看额度)$/i.test(t);
   }
 
   function looksLikeModelName(text) {
@@ -1080,15 +1197,16 @@
     return rect.width > 20 && rect.height > 20;
   }
 
-  // 检测某主菜单项是否为带有二级推理档位子菜单的 SubTrigger
+  // 检测某主菜单项是否为带有二级子菜单（推理档位或 Orchestrator 底层模型）的 SubTrigger
   function detectRowHasSubmenu(el, parsed, isUnavailable) {
-    if (!el || isUnavailable || parsed.isOrchestrator) return false;
+    if (!el || isUnavailable) return false;
     // 括号固定单版（如 GPT-OSS 120B (Medium)）无二级子菜单，除非 DOM 明确声明 aria-haspopup="menu"
     const hasPopupAttr =
       el.getAttribute('aria-haspopup') === 'menu' ||
       el.hasAttribute('data-radix-menu-subtrigger') ||
       (el.hasAttribute('aria-expanded') && el.getAttribute('role') === 'menuitem');
     if (hasPopupAttr) return true;
+    if (parsed.isOrchestrator) return false;
     if (parsed.effortSource === 'paren') return false;
     // 图中所有带二级菜单的模型在主行均带尾部无括号当前档位（如 "Gemini 4 Neon 中"、"Claude Opus 5.5 中"）
     if (parsed.effortSource === 'tail') return true;
@@ -1371,6 +1489,65 @@
     return items;
   }
 
+  // 从 Orchestrator 二级子菜单 DOM 中提取底层可选模型列表（如 Gemini 4 Neon / Gemini 4 Argon / Claude Opus 5.5 及未来新增模型）
+  function parseOrchestratorSubmenuModels(subMenuEl) {
+    if (!subMenuEl || !(subMenuEl instanceof Element)) return [];
+    const candidates = Array.from(
+      subMenuEl.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="option"], [data-radix-collection-item], button, li')
+    );
+    const items = [];
+    const seen = new Set();
+    for (const el of candidates) {
+      if (el === subMenuEl) continue;
+      if (candidates.some((o) => o !== el && el.contains(o))) continue;
+      const lines = extractOptionLinesFromDom(el);
+      const rawText = (lines[0] || '').trim();
+      if (!rawText) continue;
+      if (looksLikeUsageItem(rawText) || isOrchestratorText(rawText)) continue;
+      const lowClean = rawText.replace(/[✓✔]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (EFFORT_SYNONYMS.has(lowClean)) continue;
+      if (!looksLikeModelName(rawText)) continue;
+
+      const parsed = parseModelLabel(rawText, lines.slice(1).join(' · '));
+      if (!parsed || !parsed.baseName || parsed.isOrchestrator) continue;
+
+      const key = parsed.baseName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const hasLevel3 =
+        el.getAttribute('aria-haspopup') === 'menu' ||
+        el.hasAttribute('data-radix-menu-subtrigger') ||
+        (el.hasAttribute('aria-expanded') && el.getAttribute('role') === 'menuitem') ||
+        parsed.effortSource === 'tail';
+      const isDisabled =
+        !!parsed.isUnavailable ||
+        el.hasAttribute('disabled') ||
+        el.getAttribute('aria-disabled') === 'true' ||
+        el.hasAttribute('data-disabled');
+      const isChecked =
+        !isDisabled &&
+        (el.getAttribute('aria-checked') === 'true' ||
+          el.getAttribute('aria-selected') === 'true' ||
+          el.getAttribute('data-state') === 'checked');
+
+      items.push({
+        key,
+        baseName: parsed.baseName,
+        shortName: getOrchestratorSubModelShortName(parsed.baseName),
+        vendor: parsed.vendor || 'Google',
+        accent: getOrchestratorSubModelAccent(parsed.baseName, parsed.vendor || 'Google'),
+        nativeLabel: rawText,
+        currentEffortKey: parsed.effortKey || null,
+        hasLevel3,
+        disabled: isDisabled,
+        checked: isChecked,
+        el,
+      });
+    }
+    return items;
+  }
+
   // 解析 View Usage 二级弹窗文本为结构化额度池数组（同时支持多行、同行、单池紧凑行）
   function parseUsagePanelLines(lines) {
     if (!Array.isArray(lines) || !lines.length) return [];
@@ -1398,12 +1575,13 @@
     };
 
     const parsePctFromLine = (line) => {
-      // 必须明确带 left/remaining/剩余/used/已用 后缀，防止误抓普通文本中的任意百分号
-      const m = line.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(left|remaining|剩余|used|已用)\b/i);
+      // 必须明确带 left/remaining/剩余/used/已用 后缀，防止误抓普通文本中的任意百分号（避免中文后缀被 \b 截断）
+      const m = line.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(left|remaining|used)\b|(剩余|已用))/i);
       if (!m) return null;
       let val = Number(m[1]);
       if (Number.isNaN(val)) return null;
-      if (m[2] && /^(used|已用)$/i.test(m[2])) {
+      const suffix = m[2] || m[3] || '';
+      if (/^(used|已用)$/i.test(suffix)) {
         val = 100 - val;
       }
       return Math.max(0, Math.min(100, Math.round(val)));
@@ -1454,7 +1632,7 @@
 
       // 剥离百分比和 reset 后判断本行是否携带新的池标题（例如图 7 底部："Gemini 4 Argon 40% left"）
       const strippedTitle = line
-        .replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:left|remaining|剩余|used|已用)\b/gi, '')
+        .replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/gi, '')
         .replace(/(?:weekly\s+limit\s*,?\s*)?resets?\s+in\s+[^·|]+/gi, '')
         .trim();
 
@@ -1506,7 +1684,7 @@
       }
 
       if (hasReset) {
-        const cleanReset = line.replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:left|remaining|剩余|used|已用)\b/gi, '').trim();
+        const cleanReset = line.replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/gi, '').trim();
         if (pct !== null) assignPct(currentPool, currentBucket, pct, cleanReset);
         else attachReset(currentPool, currentBucket, cleanReset);
         continue;
@@ -1551,7 +1729,7 @@
 
   // 通过文本节点精准定位刚弹出的 View Usage 紧凑浮层（不依赖 role 属性，同时 100% 跳过聊天窗口）
   function findUsagePopoverByText(nativeMenuEl, ignoredMenus = null) {
-    const usageTextRe = /\b\d{1,3}(?:\.\d+)?\s*%\s*(?:left|remaining|剩余|used|已用)\b/i;
+    const usageTextRe = /\b\d{1,3}(?:\.\d+)?\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/i;
     const hitEls = [];
 
     const visitNode = (node) => {
@@ -1622,21 +1800,25 @@
     return bestContainer;
   }
 
-  // 查找当前页面中与 triggerRow 对应的已弹出二级子菜单（mode: 'effort' | 'usage'，严格禁止误扫主界面与聊天区）
+  // 查找当前页面中与 triggerRow 对应的已弹出二/三级子菜单（mode: 'effort' | 'orchestrator' | 'usage'，严格禁止误扫主界面与聊天区）
   function findActiveSubmenu(nativeMenuEl, triggerRow, mode, ignoredMenus = null) {
-    const maxLen = mode === 'effort' ? 360 : 1200;
+    const maxLen = mode === 'effort' ? 360 : mode === 'orchestrator' ? 680 : 1200;
 
-    // 1. 优先通过标准 ARIA 关联 ID 查找（Radix SubTrigger 打开时常写入 aria-controls）
+    const matchesMode = (el) => {
+      if (triggerRow && (el === triggerRow || el.contains(triggerRow))) return false;
+      if (mode === 'effort') return parseSubmenuEffortItems(el).length >= 1;
+      if (mode === 'orchestrator') return parseOrchestratorSubmenuModels(el).length >= 1;
+      if (mode === 'usage') return parseUsagePanelLines(extractOptionLinesFromDom(el)).length >= 1;
+      return false;
+    };
+
+    // 1. 优先通过标准 ARIA 关联 ID 查找（Radix / Base UI SubTrigger 打开时常写入 aria-controls）
     for (const attr of ['aria-controls', 'aria-owns']) {
       const id = triggerRow?.getAttribute(attr);
       if (id) {
         const ctrl = document.getElementById(id);
         if (ctrl && !isExcludedNonPopoverContainer(ctrl, nativeMenuEl, maxLen)) {
-          if (mode === 'effort' && parseSubmenuEffortItems(ctrl).length >= 1) return ctrl;
-          if (mode === 'usage') {
-            const lines = extractOptionLinesFromDom(ctrl);
-            if (parseUsagePanelLines(lines).length >= 1) return ctrl;
-          }
+          if (matchesMode(ctrl)) return ctrl;
         }
       }
     }
@@ -1664,18 +1846,13 @@
       if (isExcludedNonPopoverContainer(el, nativeMenuEl, maxLen)) return false;
       if (ignoredMenus && ignoredMenus.has(el)) return false;
       if (nativeMenuEl && nativeMenuEl.contains(el)) return false;
+      if (triggerRow && (el === triggerRow || el.contains(triggerRow))) return false;
       return true;
     });
 
     for (let i = nodes.length - 1; i >= 0; i--) {
       const el = nodes[i];
-      if (mode === 'effort') {
-        const items = parseSubmenuEffortItems(el);
-        if (items.length >= 1) return el;
-      } else if (mode === 'usage') {
-        const lines = extractOptionLinesFromDom(el);
-        if (parseUsagePanelLines(lines).length >= 1) return el;
-      }
+      if (matchesMode(el)) return el;
     }
 
     // 3. 对 View Usage 额外执行 TreeWalker 文本反查：哪怕浮层是无任何 role 的普通 div 也能精准命中，且 100% 跳过聊天区
@@ -1696,6 +1873,8 @@
         if (ignoredMenus && ignoredMenus.has(el)) continue;
         if (mode === 'effort') {
           if (parseSubmenuEffortItems(el).length >= 2) return el;
+        } else if (mode === 'orchestrator') {
+          if (parseOrchestratorSubmenuModels(el).length >= 1) return el;
         } else if (mode === 'usage') {
           if (parseUsagePanelLines(extractOptionLinesFromDom(el)).length >= 1) return el;
         }
@@ -1846,15 +2025,16 @@
       }
     }
 
-    // 2. 匹配系列通用聚合池
+    // 2. 优先匹配第三方厂商通用聚合池（防止 Orchestrator 内的 Claude Opus 5.5 误套到 Gemini 池）
+    if (vendor === 'Anthropic' || vendor === 'OpenAI' || /\bclaude\b|\bgpt\b|\bopus\b|\bsonnet\b/i.test(targetLow)) {
+      const cgPool = pools.find((p) => /claude|gpt/i.test(p.title));
+      if (cgPool) return cgPool;
+    }
+
+    // 3. 匹配 Gemini 系列通用聚合池
     if (vendor === 'Google' || isOrchestrator || /\bgemini\b|\bflash\b/i.test(targetLow)) {
       const geminiPool = pools.find((p) => /gemini/i.test(p.title) && !/\b(argon|neon|hydrogen|carbon)\b/i.test(p.title.toLowerCase()));
       if (geminiPool) return geminiPool;
-    }
-
-    if (vendor === 'Anthropic' || vendor === 'OpenAI' || /\bclaude\b|\bgpt\b/i.test(targetLow)) {
-      const cgPool = pools.find((p) => /claude|gpt/i.test(p.title));
-      if (cgPool) return cgPool;
     }
 
     return null;
@@ -1863,6 +2043,20 @@
   function getQuotaForGroup(grp) {
     if (!grp || grp.unavailable) return null;
     if (grp.kind === 'orchestrator') {
+      const activeSub =
+        (Array.isArray(grp.subModels) &&
+          (grp.subModels.find((sm) => sm.variants.some((v) => v.canonicalKey === state.activeModelKey)) ||
+            grp.subModels.find((sm) => sm.key === grp.defaultSubModelKey) ||
+            grp.subModels[0])) ||
+        null;
+      if (activeSub) {
+        return getQuotaForTarget({
+          baseName: activeSub.baseName,
+          vendor: activeSub.vendor || 'Google',
+          isOrchestrator: true,
+          orchestratorTier: activeSub.shortName || '',
+        });
+      }
       return getQuotaForTarget({ baseName: 'Gemini', vendor: 'Google', isOrchestrator: true });
     }
     return getQuotaForTarget({
@@ -2098,6 +2292,121 @@
     });
   }
 
+  function buildOrchestratorSubModelsList(rawDescriptors, parentEl, activeKey, source = 'native') {
+    const subModels = [];
+    const seen = new Set();
+    for (const desc of rawDescriptors || []) {
+      if (!desc || !desc.baseName) continue;
+      const baseName = String(desc.baseName).trim();
+      const key = baseName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const vendor = desc.vendor || (/^claude\b/i.test(baseName) ? 'Anthropic' : /^(?:gpt|o1|o3|o4)\b/i.test(baseName) ? 'OpenAI' : 'Google');
+      const shortName = desc.shortName || getOrchestratorSubModelShortName(baseName);
+      const accent = desc.accent || getOrchestratorSubModelAccent(baseName, vendor);
+      const hasLevel3 = desc.hasLevel3 !== false && Array.isArray(desc.efforts) && desc.efforts.length > 0;
+      const effortEntries = hasLevel3
+        ? desc.efforts
+        : (desc.hasLevel3 ? getSubmenuEffortsForModel(baseName, null) : []);
+
+      let variants;
+      if (effortEntries.length > 0) {
+        variants = effortEntries.map((entry) => {
+          const ek = typeof entry === 'string' ? entry : entry.effortKey;
+          const nativeSubLabel = typeof entry === 'object' && entry.nativeLabel ? entry.nativeLabel : null;
+          const meta = EFFORT_META[ek] || EFFORT_META.default;
+          const rawLabel = `Orchestrator · ${baseName} (${nativeSubLabel || meta.en})`;
+          const canonicalKey = buildOrchestratorCanonicalKey(baseName, ek);
+          return {
+            rawLabel,
+            baseName: 'Orchestrator',
+            shortName: `Orchestrator · ${shortName}`,
+            badges: [],
+            effortKey: ek,
+            effortMeta: meta,
+            nativeSubLabel: nativeSubLabel || meta.en,
+            element: null,
+            isOrchestrator: true,
+            orchestratorTier: shortName,
+            orchestratorId: 'orch:main',
+            orchSubModelKey: key,
+            orchSubModelBaseName: baseName,
+            orchSubModelShortName: shortName,
+            orchSubModelNativeLabel: desc.nativeLabel || baseName,
+            orchSubVendor: vendor,
+            tierLabel: shortName,
+            tierAccent: accent,
+            vendor,
+            vendorColor: accent,
+            canonicalKey,
+            subtitle: '',
+            disabled: !!desc.disabled,
+            unavailable: !!desc.disabled,
+            viaSubmenu: false,
+            viaOrchSubmenu: true,
+            hasLevel3: true,
+            selected: canonicalKey === activeKey,
+            parentEl: parentEl || null,
+            el: parentEl || null,
+            source,
+          };
+        });
+      } else {
+        const rawLabel = `Orchestrator (${shortName})`;
+        const canonicalKey = buildOrchestratorCanonicalKey(baseName, null);
+        variants = [
+          {
+            rawLabel,
+            baseName: 'Orchestrator',
+            shortName: rawLabel,
+            badges: [],
+            effortKey: null,
+            effortMeta: null,
+            element: null,
+            isOrchestrator: true,
+            orchestratorTier: shortName,
+            orchestratorId: 'orch:main',
+            orchSubModelKey: key,
+            orchSubModelBaseName: baseName,
+            orchSubModelShortName: shortName,
+            orchSubModelNativeLabel: desc.nativeLabel || baseName,
+            orchSubVendor: vendor,
+            tierLabel: shortName,
+            tierAccent: accent,
+            vendor,
+            vendorColor: accent,
+            canonicalKey,
+            subtitle: '',
+            disabled: !!desc.disabled,
+            unavailable: !!desc.disabled,
+            viaSubmenu: false,
+            viaOrchSubmenu: !!parentEl,
+            hasLevel3: false,
+            selected: canonicalKey === activeKey,
+            parentEl: parentEl || null,
+            el: desc.el || parentEl || null,
+            source,
+          },
+        ];
+      }
+
+      subModels.push({
+        key,
+        baseName,
+        shortName,
+        vendor,
+        accent,
+        nativeLabel: desc.nativeLabel || baseName,
+        hasLevel3: variants.some((v) => v.hasLevel3),
+        disabled: !!desc.disabled,
+        efforts: variants.map((v) => v.effortKey).filter(Boolean),
+        variants,
+      });
+    }
+    return subModels;
+  }
+
   function buildModelGroups(modelItems, actionItems, triggerBtn, usageTriggerEl = null) {
     state.lastNativeModelItems = modelItems || [];
     state.lastNativeActionItems = actionItems || [];
@@ -2105,32 +2414,41 @@
 
     const modelsBySymbol = new Map();
     const googleClassicMap = new Map();
-    const orchVariantsMap = new Map();
+    const orchLegacyVariantsMap = new Map();
     const otherMap = new Map();
     let activeKey = extractCurrentModelFromButton(triggerBtn);
     let detectedSeries = CONFIG.seriesLabel;
     let nativeOrchCount = 0;
+    let nativeOrchSubmenuItem = null;
 
     for (const item of state.lastNativeModelItems) {
       if (item.selected && !item.unavailable) activeKey = item.canonicalKey;
 
       if (item.isOrchestrator) {
         nativeOrchCount++;
-        const tier = item.orchestratorTier || null;
-        const tierKey = tier ? tier.toLowerCase() : item.canonicalKey;
-        const tierLabel = tier || item.rawLabel.replace(/^.*orchestrator[\s:：-]*/i, '').replace(/^[（(]|[）)]$/g, '').trim() || item.rawLabel;
-        const tierAccent = tier === 'Neon' ? '#fb7185' : tier === 'Argon' ? '#2dd4bf' : '#a855f7';
-        if (!orchVariantsMap.has(tierKey)) {
-          orchVariantsMap.set(tierKey, {
+        if (item.hasSubmenu) {
+          nativeOrchSubmenuItem = item;
+          continue;
+        }
+        const subBase = item.orchSubModelBaseName || item.orchestratorTier || item.rawLabel;
+        const subShort = item.orchSubModelShortName || item.orchestratorTier || getOrchestratorSubModelShortName(subBase);
+        const tierKey = String(subBase).toLowerCase();
+        const tierAccent = item.orchSubAccent || getOrchestratorSubModelAccent(subBase, item.vendor);
+        if (!orchLegacyVariantsMap.has(tierKey)) {
+          orchLegacyVariantsMap.set(tierKey, {
             ...item,
-            effortKey: null,
-            effortMeta: null,
+            effortKey: item.effortKey || null,
+            effortMeta: item.effortMeta || null,
             viaSubmenu: false,
-            orchestratorTier: tier || tierLabel,
+            viaOrchSubmenu: false,
+            hasLevel3: false,
+            orchestratorTier: subShort,
             orchestratorId: 'orch:main',
-            tierLabel,
-            tierSub: `Orchestrator · ${tierLabel}`,
-            tierDesc: '无推理档位 · 直接切换',
+            orchSubModelKey: tierKey,
+            orchSubModelBaseName: subBase,
+            orchSubModelShortName: subShort,
+            orchSubVendor: item.orchSubVendor || item.vendor || 'Google',
+            tierLabel: subShort,
             tierAccent,
           });
         }
@@ -2342,56 +2660,92 @@
       });
     }
 
-    // Orchestrator 合并为唯一 1 个模块（仅含 Neon / Argon，无推理档位）
-    if (orchVariantsMap.size === 0 && state.lastNativeModelItems.length === 0) {
-      for (const tierCfg of CONFIG.guaranteedOrchestratorTiers || []) {
-        if (!tierCfg || !tierCfg.tier) continue;
-        const tier = tierCfg.tier;
-        const rawLabel = `Orchestrator (${tier})`;
-        const canonicalKey = normalizeKey(rawLabel);
-        const tierAccent = tierCfg.accent || (tier === 'Neon' ? '#fb7185' : '#2dd4bf');
-        orchVariantsMap.set(tier.toLowerCase(), {
-          rawLabel,
-          baseName: 'Orchestrator',
-          shortName: rawLabel,
-          badges: [],
-          effortKey: null,
-          effortMeta: null,
-          viaSubmenu: false,
-          element: null,
-          isOrchestrator: true,
-          orchestratorTier: tier,
-          orchestratorId: 'orch:main',
-          tierLabel: tierCfg.label || tier,
-          tierSub: tierCfg.sub || `Orchestrator · ${tier}`,
-          tierDesc: tierCfg.desc || '无推理档位 · 直接切换',
-          tierAccent,
-          vendor: 'Google',
-          vendorColor: tierAccent,
-          canonicalKey,
-          subtitle: '',
-          disabled: false,
-          selected: canonicalKey === activeKey,
-          el: null,
-          source: 'guaranteed',
-        });
+    // Orchestrator 合并为唯一 1 个模块（自动适配新版 3 级菜单：底层模型 -> 推理档位，并兼容旧版扁平项）
+    let orchSubModels = [];
+    let orchHasSubmenu = false;
+    let orchParentEl = null;
+    let orchDefaultSubModelKey = '';
+
+    if (nativeOrchSubmenuItem) {
+      orchHasSubmenu = true;
+      orchParentEl = nativeOrchSubmenuItem.parentEl || nativeOrchSubmenuItem.el;
+      if (nativeOrchSubmenuItem.orchSubModelBaseName) {
+        orchDefaultSubModelKey = nativeOrchSubmenuItem.orchSubModelBaseName.toLowerCase();
       }
+      const initialDescriptors =
+        Array.isArray(cachedOrchestratorModels) && cachedOrchestratorModels.length > 0
+          ? cachedOrchestratorModels
+          : Array.isArray(CONFIG.guaranteedOrchestratorModels) && CONFIG.guaranteedOrchestratorModels.length > 0
+            ? CONFIG.guaranteedOrchestratorModels
+            : [];
+      orchSubModels = buildOrchestratorSubModelsList(initialDescriptors, orchParentEl, activeKey, 'native');
+      // 如果主行显示了某未在缓存/默认表中的底层模型，也先纳入保底展示，待后台探测更新
+      if (orchDefaultSubModelKey && !orchSubModels.some((sm) => sm.key === orchDefaultSubModelKey)) {
+        const extraSub = buildOrchestratorSubModelsList(
+          [
+            {
+              baseName: nativeOrchSubmenuItem.orchSubModelBaseName,
+              shortName: nativeOrchSubmenuItem.orchSubModelShortName,
+              vendor: nativeOrchSubmenuItem.orchSubVendor,
+              accent: nativeOrchSubmenuItem.orchSubAccent,
+              hasLevel3: true,
+              efforts: getSubmenuEffortsForModel(nativeOrchSubmenuItem.orchSubModelBaseName, nativeOrchSubmenuItem.effortKey),
+            },
+          ],
+          orchParentEl,
+          activeKey,
+          'native'
+        );
+        orchSubModels.push(...extraSub);
+      }
+    } else if (orchLegacyVariantsMap.size > 0) {
+      const legacyOrder = { 'gemini 4 neon': 1, neon: 1, 'gemini 4 argon': 2, argon: 2, 'claude opus 5.5': 3 };
+      const sortedLegacy = Array.from(orchLegacyVariantsMap.values()).sort((a, b) => {
+        const oa = legacyOrder[String(a.orchSubModelKey || '').toLowerCase()] || 99;
+        const ob = legacyOrder[String(b.orchSubModelKey || '').toLowerCase()] || 99;
+        if (oa !== ob) return oa - ob;
+        return String(a.tierLabel || a.rawLabel).localeCompare(String(b.tierLabel || b.rawLabel));
+      });
+      orchSubModels = sortedLegacy.map((v) => ({
+        key: v.orchSubModelKey || v.canonicalKey,
+        baseName: v.orchSubModelBaseName || v.tierLabel || v.rawLabel,
+        shortName: v.orchSubModelShortName || v.tierLabel || v.rawLabel,
+        vendor: v.orchSubVendor || 'Google',
+        accent: v.tierAccent || '#a855f7',
+        nativeLabel: v.rawLabel,
+        hasLevel3: false,
+        disabled: !!v.disabled,
+        efforts: [],
+        variants: [v],
+      }));
+    } else if (state.lastNativeModelItems.length === 0) {
+      const fallbackDescriptors =
+        Array.isArray(CONFIG.guaranteedOrchestratorModels) && CONFIG.guaranteedOrchestratorModels.length > 0
+          ? CONFIG.guaranteedOrchestratorModels
+          : (CONFIG.guaranteedOrchestratorTiers || []).map((t) => ({
+              baseName: `${CONFIG.seriesLabel || 'Gemini 4'} ${t.tier}`,
+              shortName: t.label || t.tier,
+              vendor: 'Google',
+              accent: t.accent,
+              hasLevel3: true,
+              efforts: t.tier === 'Neon' ? ['low', 'medium', 'high', 'extra'] : ['low', 'medium', 'high'],
+            }));
+      orchSubModels = buildOrchestratorSubModelsList(fallbackDescriptors, null, activeKey, 'guaranteed');
     }
 
-    const orchOrder = { neon: 1, argon: 2 };
-    const orchVariants = Array.from(orchVariantsMap.values()).sort((a, b) => {
-      const oa = orchOrder[String(a.orchestratorTier || '').toLowerCase()] || 99;
-      const ob = orchOrder[String(b.orchestratorTier || '').toLowerCase()] || 99;
-      if (oa !== ob) return oa - ob;
-      return String(a.tierLabel || a.rawLabel).localeCompare(String(b.tierLabel || b.rawLabel));
-    });
+    const orchVariants = orchSubModels.flatMap((sm) => sm.variants);
+    const orchHasEffort = orchSubModels.some((sm) => sm.hasLevel3 && sm.efforts.length > 0);
+    if (!orchDefaultSubModelKey && orchSubModels.length > 0) {
+      orchDefaultSubModelKey = orchSubModels[0].key;
+    }
 
     const orchestratorModels = orchVariants.length
       ? [
           {
             kind: 'orchestrator',
             id: 'orch:main',
-            hasEffort: false,
+            hasSubmenu: orchHasSubmenu,
+            hasEffort: orchHasEffort,
             baseName: 'Orchestrator',
             shortName: 'Orchestrator',
             cardTag: 'Orchestrator',
@@ -2399,7 +2753,10 @@
             accent: '#a855f7',
             vendor: 'Google',
             vendorColor: '#a855f7',
+            parentEl: orchParentEl,
+            defaultSubModelKey: orchDefaultSubModelKey,
             source: nativeOrchCount > 0 ? 'native' : 'guaranteed',
+            subModels: orchSubModels,
             variants: orchVariants,
           },
         ]
@@ -2577,6 +2934,82 @@
         safeSaveJson(STORAGE_SUBMENU_EFFORTS_KEY, cachedSubmenuEfforts);
       }
 
+      // 第 3 步：静默探测 Orchestrator 二级底层模型列表及各模型三级推理档位子菜单
+      for (const orchGrp of state.orchestratorModels) {
+        if (token !== state.probeToken || !state.open || !nativeMenu.isConnected) break;
+        if (!orchGrp || !orchGrp.hasSubmenu || !orchGrp.parentEl || !orchGrp.parentEl.isConnected) continue;
+
+        const sub2 = await openAndWaitSubmenu(nativeMenu, orchGrp.parentEl, 'orchestrator', 420);
+        if (sub2 && token === state.probeToken && state.open) {
+          const parsedModels = parseOrchestratorSubmenuModels(sub2);
+          if (parsedModels.length >= 1) {
+            const probedDescriptors = [];
+            for (const pm of parsedModels) {
+              if (token !== state.probeToken || !state.open || !nativeMenu.isConnected) break;
+              let effortEntries = [];
+              if (pm.hasLevel3 && pm.el && pm.el.isConnected) {
+                const sub3 = await openAndWaitSubmenu(nativeMenu, pm.el, 'effort', 320);
+                if (sub3 && token === state.probeToken && state.open) {
+                  const parsedL3 = parseSubmenuEffortItems(sub3);
+                  if (parsedL3.length >= 1) {
+                    effortEntries = parsedL3;
+                    const checkedOne = parsedL3.find((x) => x.checked);
+                    if (checkedOne && isGroupActive(orchGrp)) {
+                      state.activeModelKey = buildOrchestratorCanonicalKey(pm.baseName, checkedOne.effortKey);
+                    }
+                  }
+                  dispatchQuietLeaveSubmenu(pm.el, sub3);
+                  await sleepMs(45);
+                }
+              }
+              if (pm.hasLevel3 && !effortEntries.length) {
+                effortEntries = getSubmenuEffortsForModel(pm.baseName, pm.currentEffortKey);
+              }
+              probedDescriptors.push({
+                baseName: pm.baseName,
+                shortName: pm.shortName,
+                vendor: pm.vendor,
+                accent: pm.accent,
+                nativeLabel: pm.nativeLabel,
+                hasLevel3: pm.hasLevel3,
+                disabled: pm.disabled,
+                efforts: effortEntries.map((x) => (typeof x === 'string' ? x : x.effortKey)),
+                _richEfforts: effortEntries,
+              });
+            }
+
+            if (probedDescriptors.length >= 1 && token === state.probeToken && state.open) {
+              const prevSig = JSON.stringify(
+                (orchGrp.subModels || []).map((sm) => [sm.key, sm.efforts])
+              );
+              const richDescriptors = probedDescriptors.map((d) => ({
+                ...d,
+                efforts: d._richEfforts && d._richEfforts.length ? d._richEfforts : d.efforts,
+              }));
+              const nextSubModels = buildOrchestratorSubModelsList(richDescriptors, orchGrp.parentEl, state.activeModelKey, 'native');
+              orchGrp.subModels = nextSubModels;
+              orchGrp.variants = nextSubModels.flatMap((sm) => sm.variants);
+              orchGrp.hasEffort = nextSubModels.some((sm) => sm.hasLevel3 && sm.efforts.length > 0);
+              if (
+                state.selectedOrchSubModelKey &&
+                !nextSubModels.some((sm) => sm.key === state.selectedOrchSubModelKey)
+              ) {
+                state.selectedOrchSubModelKey = nextSubModels[0]?.key || '';
+              }
+
+              cachedOrchestratorModels = probedDescriptors.map(({ _richEfforts, ...rest }) => rest);
+              safeSaveJson(STORAGE_ORCHESTRATOR_SUBMENU_KEY, cachedOrchestratorModels);
+
+              const nextSig = JSON.stringify(nextSubModels.map((sm) => [sm.key, sm.efforts]));
+              if (prevSig !== nextSig) {
+                anyEffortChanged = true;
+              }
+            }
+          }
+          await closeSubmenuAndWaitGone(orchGrp.parentEl, sub2);
+        }
+      }
+
       if (anyEffortChanged && token === state.probeToken && state.open) {
         refreshQuotaBordersAndPanels();
       }
@@ -2631,6 +3064,10 @@
     if (!Array.isArray(modelItems) || !modelItems.length || !variant) return null;
 
     if (variant.isOrchestrator) {
+      if (variant.viaOrchSubmenu) {
+        const subRow = modelItems.find((item) => item.isOrchestrator && item.hasSubmenu);
+        if (subRow && subRow.el) return subRow.el;
+      }
       const orchExact = modelItems.find(
         (item) => item.isOrchestrator && item.canonicalKey === variant.canonicalKey
       );
@@ -2721,6 +3158,85 @@
     return false;
   }
 
+  // 在原版主菜单上执行 Orchestrator 三步级联切换：“一级 Orchestrator -> 二级底层模型 -> 三级推理档位”
+  async function executeOrchestratorSelection(nativeMenu, orchRow, variant) {
+    if (!orchRow || !orchRow.isConnected) return false;
+    ensureCloakStyle();
+    document.documentElement.setAttribute('data-ag-periodic-cloaking', '1');
+    document.documentElement.setAttribute('data-ag-periodic-probing', '1');
+
+    const cleanupCloak = () => {
+      if (nativeMenu) {
+        nativeMenu.removeAttribute('data-ag-periodic-hidden-menu');
+        nativeMenu.style.pointerEvents = '';
+      }
+      document.documentElement.removeAttribute('data-ag-periodic-probing');
+      document.documentElement.removeAttribute('data-ag-periodic-cloaking');
+    };
+
+    const sub2El = await openAndWaitSubmenu(nativeMenu, orchRow, 'orchestrator', 700);
+    if (!sub2El) {
+      dispatchRealClick(orchRow);
+      setTimeout(cleanupCloak, 90);
+      return true;
+    }
+
+    const subModels = parseOrchestratorSubmenuModels(sub2El);
+    const wantBase = String(variant.orchSubModelBaseName || '').toLowerCase();
+    const wantShort = String(variant.orchSubModelShortName || variant.orchestratorTier || '').toLowerCase();
+    const wantNative = String(variant.orchSubModelNativeLabel || '').toLowerCase();
+
+    let targetModel = subModels.find((m) => m.key === wantBase);
+    if (!targetModel && wantNative) {
+      targetModel = subModels.find((m) => m.nativeLabel.toLowerCase() === wantNative);
+    }
+    if (!targetModel && wantShort) {
+      targetModel = subModels.find(
+        (m) => m.shortName.toLowerCase() === wantShort || m.baseName.toLowerCase().includes(wantShort)
+      );
+    }
+    if (!targetModel && subModels.length) {
+      targetModel = subModels[0];
+    }
+
+    if (!targetModel || !targetModel.el || !targetModel.el.isConnected) {
+      cleanupCloak();
+      return false;
+    }
+
+    if (!targetModel.hasLevel3 || !variant.effortKey) {
+      dispatchRealClick(targetModel.el);
+      setTimeout(cleanupCloak, 90);
+      return true;
+    }
+
+    const sub3El = await openAndWaitSubmenu(nativeMenu, targetModel.el, 'effort', 650);
+    if (!sub3El) {
+      dispatchRealClick(targetModel.el);
+      setTimeout(cleanupCloak, 90);
+      return true;
+    }
+
+    const effortItems = parseSubmenuEffortItems(sub3El);
+    let targetOpt = effortItems.find((x) => x.effortKey === variant.effortKey);
+    if (!targetOpt && variant.nativeSubLabel) {
+      const nl = variant.nativeSubLabel.toLowerCase();
+      targetOpt = effortItems.find((x) => x.nativeLabel.toLowerCase() === nl);
+    }
+    if (!targetOpt && effortItems.length) {
+      targetOpt = effortItems[0];
+    }
+
+    if (targetOpt && targetOpt.el && targetOpt.el.isConnected) {
+      dispatchRealClick(targetOpt.el);
+      setTimeout(cleanupCloak, 90);
+      return true;
+    }
+
+    cleanupCloak();
+    return false;
+  }
+
   function reopenAndSelectVariant(variant, triggerBtn) {
     if (!triggerBtn || !triggerBtn.isConnected) return;
     ensureCloakStyle();
@@ -2739,7 +3255,9 @@
         found.menuEl.setAttribute('data-ag-periodic-hidden-menu', '1');
         const targetEl = findBestMatchingMenuElement(found.modelItems, variant);
         if (targetEl) {
-          if (variant.viaSubmenu) {
+          if (variant.viaOrchSubmenu) {
+            executeOrchestratorSelection(found.menuEl, targetEl, variant);
+          } else if (variant.viaSubmenu) {
             executeSubmenuSelection(found.menuEl, targetEl, variant);
           } else {
             found.menuEl.style.pointerEvents = 'auto';
@@ -2791,7 +3309,7 @@
 
     const triggerBtn = state.triggerBtn;
     const nativeMenu = state.nativeMenuEl;
-    let targetEl = variant.viaSubmenu ? (variant.parentEl || variant.el) : variant.el;
+    let targetEl = variant.viaOrchSubmenu || variant.viaSubmenu ? (variant.parentEl || variant.el) : variant.el;
     if ((!targetEl || !targetEl.isConnected) && state.lastNativeModelItems.length) {
       targetEl = findBestMatchingMenuElement(state.lastNativeModelItems, variant);
     }
@@ -2799,7 +3317,9 @@
     closeModal({ dismissNativeMenu: false });
 
     if (targetEl && targetEl.isConnected) {
-      if (variant.viaSubmenu) {
+      if (variant.viaOrchSubmenu) {
+        executeOrchestratorSelection(nativeMenu, targetEl, variant);
+      } else if (variant.viaSubmenu) {
         executeSubmenuSelection(nativeMenu, targetEl, variant);
       } else {
         if (nativeMenu) nativeMenu.style.pointerEvents = 'auto';
@@ -2897,6 +3417,7 @@
     state.probingUsage = false;
     state.probingSubmenus = false;
     state.selectedGroup = null;
+    state.selectedOrchSubModelKey = '';
     state.virtualElement = null;
     state.virtualPickedEffort = null;
     state.virtualFeedback = '';
@@ -2944,9 +3465,11 @@
     for (const grp of state.orchestratorModels) {
       for (const v of grp.variants) {
         if (v.canonicalKey === state.activeModelKey) {
+          const subLabel = v.orchSubModelShortName || v.orchestratorTier || v.tierLabel || '';
+          const effLabel = v.effortMeta ? `${v.effortMeta.zh} (${v.effortMeta.en})` : '';
           return {
-            name: grp.baseName,
-            effort: v.orchestratorTier || v.tierLabel || '',
+            name: subLabel ? `${grp.baseName} · ${subLabel}` : grp.baseName,
+            effort: effLabel,
             accent: v.tierAccent || grp.accent,
           };
         }
@@ -3086,6 +3609,9 @@
     const gridRows = hasGmRow
       ? '16px repeat(7, clamp(42px, 4.9vw, 48px)) 7px clamp(38px, 4.4vw, 44px) clamp(38px, 4.4vw, 44px) 7px clamp(42px, 4.8vw, 47px)'
       : '16px repeat(7, clamp(43px, 5vw, 49px)) 8px clamp(39px, 4.5vw, 45px) clamp(39px, 4.5vw, 45px)';
+    const compactGridRows = hasGmRow
+      ? '14px repeat(7, clamp(35px, 4.7vh, 43px)) 5px clamp(33px, 4.3vh, 40px) clamp(33px, 4.3vh, 40px) 5px clamp(36px, 4.6vh, 43px)'
+      : '14px repeat(7, clamp(36px, 4.9vh, 45px)) 6px clamp(34px, 4.5vh, 41px) clamp(34px, 4.5vh, 41px)';
 
     return `
       :host {
@@ -3094,6 +3620,8 @@
         inset: 0;
         z-index: 2147483646;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
         color-scheme: ${isLight ? 'light' : 'dark'};
         ${vars}
       }
@@ -3294,13 +3822,68 @@
 
       .orch-tier-dot {
         display: inline-block;
-        width: 7.5px;
-        height: 7.5px;
+        width: 7px;
+        height: 7px;
         border-radius: 99px;
-        margin-right: 5px;
+        margin-right: 4px;
         vertical-align: middle;
+        flex-shrink: 0;
         background: var(--tier-color, #a855f7);
-        box-shadow: 0 0 7px var(--tier-color, #a855f7);
+        box-shadow: 0 0 6px var(--tier-color, #a855f7);
+      }
+
+      .orch-model-tabs {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 3px 0 1px;
+        overflow-x: auto;
+        padding-bottom: 1px;
+      }
+
+      .orch-model-tab {
+        appearance: none;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid var(--border-pill);
+        background: var(--bg-pill);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 500;
+        padding: 3px 9px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+      }
+
+      .orch-model-tab:hover {
+        color: var(--text-primary);
+        border-color: var(--tab-accent, #a855f7);
+        background: var(--tab-accent-bg, rgba(168, 85, 247, 0.14));
+      }
+
+      .orch-model-tab.active {
+        color: var(--text-primary);
+        font-weight: 600;
+        border-color: var(--tab-accent, #a855f7);
+        background: var(--tab-accent-bg, rgba(168, 85, 247, 0.2));
+        box-shadow: 0 0 0 1px var(--tab-accent, #a855f7);
+      }
+
+      .orch-tab-count {
+        font-size: 9.5px;
+        opacity: 0.75;
+      }
+
+      .center-stage.orch-stage .effort-grid {
+        margin: 3px 0 2px;
+      }
+
+      .center-stage.orch-stage .effort-btn {
+        padding: 4px 7px;
       }
 
       .legend-row {
@@ -3656,6 +4239,14 @@
       .pill-count { font-size: 10px; color: var(--text-muted); padding-left: 2px; z-index: 1; }
       .other-empty { font-size: 11.5px; color: var(--text-muted); }
       .other-actions { display: flex; align-items: center; gap: 6px; }
+
+      @media (max-height: 760px) {
+        .backdrop { padding: 10px; }
+        .panel { padding: 11px 14px 10px; border-radius: 14px; }
+        .header { margin-bottom: 5px; }
+        .ptable { grid-template-rows: ${compactGridRows}; gap: 2.5px; padding: 2px 4px 4px 2px; }
+        .other-section { margin-top: 7px; padding-top: 7px; }
+      }
     `;
   }
 
@@ -3755,15 +4346,142 @@
     if (state.selectedGroup) {
       const grp = state.selectedGroup;
 
-      // 1A：合并后的 Orchestrator 模块（无推理档位，仅有 Neon / Argon 直接切换）
+      // 1A：合并后的 Orchestrator 模块（支持新版 3 级结构：底层模型 Tab + 推理档位卡片；兼容旧版无档位直选）
       if (grp.kind === 'orchestrator') {
+        const subModels = Array.isArray(grp.subModels) && grp.subModels.length ? grp.subModels : [];
+        const hasMultiEffort = subModels.some((sm) => sm.hasLevel3 && sm.variants.length > 0);
+
+        if (hasMultiEffort) {
+          const activeSub =
+            subModels.find((sm) => sm.key === state.selectedOrchSubModelKey) ||
+            subModels.find((sm) => sm.variants.some((v) => v.canonicalKey === state.activeModelKey)) ||
+            subModels.find((sm) => sm.key === grp.defaultSubModelKey) ||
+            subModels[0];
+          const stageAccent = (activeSub && activeSub.accent) || grp.accent || '#a855f7';
+          const activeQuota = activeSub
+            ? getQuotaForTarget({
+                baseName: activeSub.baseName,
+                vendor: activeSub.vendor || 'Google',
+                isOrchestrator: true,
+                orchestratorTier: activeSub.shortName || '',
+              })
+            : null;
+          const quotaChipsHtml = formatQuotaShortChips(activeQuota);
+
+          const modelTabsHtml = subModels
+            .map((sm) => {
+              const isTabSelected = activeSub && sm.key === activeSub.key;
+              const isTabRunning = sm.variants.some((v) => v.canonicalKey === state.activeModelKey);
+              const smAccent = sm.accent || '#a855f7';
+              const countHint = sm.efforts.length > 0 ? `${sm.efforts.length}档` : '直选';
+              return `
+                <button
+                  type="button"
+                  class="orch-model-tab ${isTabSelected ? 'active' : ''}"
+                  style="--tab-accent:${smAccent};--tab-accent-bg:${hexToRgba(smAccent, 0.16)};"
+                  data-orch-submodel="${escHtml(sm.key)}"
+                  title="${escHtml(sm.baseName)}（${escHtml(countHint)}）"
+                >
+                  <span class="orch-tier-dot" style="--tier-color:${smAccent};margin-right:0"></span>
+                  <span>${escHtml(sm.baseName)}</span>
+                  <span class="orch-tab-count">${isTabRunning ? '✓' : escHtml(countHint)}</span>
+                </button>
+              `;
+            })
+            .join('');
+
+          const activeVariants = activeSub ? activeSub.variants : [];
+          const effortButtons = activeVariants
+            .map((v, idx) => {
+              const meta = v.effortMeta || null;
+              const isCurrent = v.canonicalKey === state.activeModelKey;
+              const barsHtml = meta
+                ? `<span class="effort-bars" aria-hidden="true">${[1, 2, 3, 4]
+                    .map((lvl) => {
+                      const h = 3 + lvl * 1.7;
+                      const lit = lvl <= meta.bars ? 'lit' : '';
+                      return `<span class="effort-bar ${lit}" style="height:${h}px"></span>`;
+                    })
+                    .join('')}</span>`
+                : '';
+              const nameZh = meta ? meta.zh : '标准版';
+              const nameEn = meta && meta.zh !== meta.en ? meta.en : (meta ? '' : 'Direct');
+              const descText = isCurrent ? '✓ 当前使用' : (meta ? meta.desc : '直接切换');
+              return `
+                <button
+                  type="button"
+                  class="effort-btn ${isCurrent ? 'current' : ''}"
+                  data-orch-submodel-key="${escHtml(activeSub.key)}"
+                  data-orch-variant-idx="${idx}"
+                  ${v.disabled ? 'disabled' : ''}
+                  title="${escHtml(v.rawLabel)}"
+                >
+                  <div class="effort-btn-top">
+                    <div>
+                      <span class="effort-name">${escHtml(nameZh)}</span>
+                      ${nameEn ? `<span class="effort-en">${escHtml(nameEn)}</span>` : ''}
+                    </div>
+                    <span class="effort-kbd">${idx + 1}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:2px;">
+                    <span class="effort-desc">${escHtml(descText)}</span>
+                    ${barsHtml}
+                  </div>
+                </button>
+              `;
+            })
+            .join('');
+
+          const subSummary = activeSub
+            ? `${activeSub.baseName} · 共 ${activeVariants.length} 档${activeQuota ? ' · ' + formatQuotaInlineText(activeQuota) : ''}`
+            : `共 ${subModels.length} 个底层模型`;
+
+          return `
+            <div
+              class="center-stage picking orch-stage"
+              style="--stage-accent:${stageAccent};--stage-accent-bg:${hexToRgba(stageAccent, 0.16)};--stage-accent-border:${hexToRgba(stageAccent, 0.45)};"
+            >
+              <div class="effort-header">
+                <div class="effort-model-info">
+                  <div class="effort-symbol-badge">
+                    <span class="effort-symbol-num">OR</span>
+                    <span>Or</span>
+                  </div>
+                  <div class="effort-title-wrap">
+                    <div class="effort-title-line">
+                      <span class="effort-model-name">Orchestrator</span>
+                      ${quotaChipsHtml}
+                    </div>
+                    <div class="effort-model-sub">${escHtml(subSummary)}</div>
+                  </div>
+                </div>
+                <div class="stage-actions">
+                  <button type="button" class="effort-back-btn" data-action="back-overview">← 返回周期表</button>
+                </div>
+              </div>
+              <div class="orch-model-tabs" role="tablist" aria-label="Orchestrator 底层模型">${modelTabsHtml}</div>
+              <div class="effort-grid">${effortButtons}</div>
+              <div class="effort-footer">
+                <span>←/→ 切底层模型 · 数字键 1-${activeVariants.length} 快选档位</span>
+                <span>Esc 返回</span>
+              </div>
+            </div>
+          `;
+        }
+
+        // 兼容旧版无三级档位的扁平 Orchestrator
         const accent = grp.accent || '#a855f7';
         const tierButtons = grp.variants
           .map((v, idx) => {
             const isCurrent = v.canonicalKey === state.activeModelKey;
-            const tierName = v.orchestratorTier || v.tierLabel || v.rawLabel;
-            const tierColor = v.tierAccent || (tierName === 'Neon' ? '#fb7185' : tierName === 'Argon' ? '#2dd4bf' : accent);
-            const tierQuota = getQuotaForTarget({ baseName: `Gemini 4 ${tierName}`, vendor: 'Google', isOrchestrator: true, orchestratorTier: tierName });
+            const tierName = v.orchSubModelShortName || v.orchestratorTier || v.tierLabel || v.rawLabel;
+            const tierColor = v.tierAccent || getOrchestratorSubModelAccent(v.orchSubModelBaseName || tierName, v.orchSubVendor);
+            const tierQuota = getQuotaForTarget({
+              baseName: v.orchSubModelBaseName || `Gemini 4 ${tierName}`,
+              vendor: v.orchSubVendor || 'Google',
+              isOrchestrator: true,
+              orchestratorTier: tierName,
+            });
             const quotaBrief = tierQuota
               ? [
                   tierQuota.weekly ? `周 ${tierQuota.weekly.pct}%` : '',
@@ -3775,8 +4493,8 @@
             const descText = isCurrent
               ? `✓ 当前使用${quotaBrief ? ' · ' + quotaBrief : ''}`
               : quotaBrief
-                ? `无推理档位 · ${quotaBrief}`
-                : '无推理档位 · 直接切换';
+                ? `直接切换 · ${quotaBrief}`
+                : '直接切换';
             return `
               <button
                 type="button"
@@ -3816,7 +4534,7 @@
                   <div class="effort-title-line">
                     <span class="effort-model-name">Orchestrator</span>
                   </div>
-                  <div class="effort-model-sub">请选择版本（共 ${grp.variants.length} 项 · 无推理档位，直接切换）</div>
+                  <div class="effort-model-sub">请选择版本（共 ${grp.variants.length} 项 · 直接切换）</div>
                 </div>
               </div>
               <div class="stage-actions">
@@ -3825,7 +4543,7 @@
             </div>
             <div class="effort-grid">${tierButtons}</div>
             <div class="effort-footer">
-              <span>无推理档位，点击直接切换 · 按数字键 1-${grp.variants.length} 快选</span>
+              <span>点击直接切换 · 按数字键 1-${grp.variants.length} 快选</span>
               <span>Esc 返回</span>
             </div>
           </div>
@@ -4066,13 +4784,17 @@
           <span><strong>${escHtml(focusInfo.group.baseName)}</strong> · 档位：${escHtml(effortsText)}${qText ? ' · ' + escHtml(qText) : ''}</span>
         `;
       } else if (focusInfo.type === 'orchestrator') {
-        const tiersText = focusInfo.group.variants
-          .map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel)
-          .join(' / ');
+        const subList = Array.isArray(focusInfo.group.subModels) && focusInfo.group.subModels.length
+          ? focusInfo.group.subModels
+          : null;
+        const tiersText = subList
+          ? subList.map((sm) => sm.shortName || sm.baseName).join(' / ')
+          : focusInfo.group.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel).join(' / ');
         const qText = formatQuotaInlineText(getQuotaForGroup(focusInfo.group));
+        const modeHint = focusInfo.group.hasEffort ? '含多档推理' : '直接切换';
         previewHtml = `
           <span class="preview-badge released">编排模型</span>
-          <span><strong>Orchestrator</strong> · 版本：${escHtml(tiersText)}（无推理档位）${qText ? ' · ' + escHtml(qText) : ''}</span>
+          <span><strong>Orchestrator</strong> · 底层模型：${escHtml(tiersText)}（${modeHint}）${qText ? ' · ' + escHtml(qText) : ''}</span>
         `;
       } else if (focusInfo.type === 'other') {
         const effortsText = focusInfo.group.variants
@@ -4170,17 +4892,22 @@
         const hasQuotaClass = quotaSvg ? 'has-quota' : '';
         const qTitle = quota ? ` · ${formatQuotaInlineText(quota)}` : '';
         const styleVars = `--el-accent:${accent};--el-bg:${hexToRgba(accent, 0.2)};--el-border:${hexToRgba(accent, 0.68)};--el-glow:${hexToRgba(accent, 0.22)};--el-glow-strong:${hexToRgba(accent, 0.42)};`;
-        const tiersSummary = grp.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel).join(' · ');
+        const subList = Array.isArray(grp.subModels) && grp.subModels.length ? grp.subModels : null;
+        const tiersSummary = subList
+          ? subList.map((sm) => sm.shortName || sm.baseName).join(' · ')
+          : grp.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel).join(' · ');
+        const activeEffortHint = activeVariant && activeVariant.effortMeta ? ` · ${activeVariant.effortMeta.zh}` : '';
         const subLine = activeVariant
-          ? `当前：${activeVariant.orchestratorTier || activeVariant.tierLabel}`
-          : tiersSummary || 'Neon · Argon';
+          ? `当前：${activeVariant.orchSubModelShortName || activeVariant.orchestratorTier || activeVariant.tierLabel}${activeEffortHint}`
+          : tiersSummary || 'Neon · Argon · Opus 5.5';
+        const modeTitleHint = grp.hasEffort ? '含推理档位' : '直接切换';
         return `
           <button
             type="button"
             class="gm-cell ${hasQuotaClass} ${active ? 'active' : ''} ${selected ? 'selected' : ''}"
             style="${styleVars}"
             data-orch-id="${escHtml(grp.id)}"
-            title="Orchestrator（${escHtml(tiersSummary)} · 无推理档位）${escHtml(qTitle)}"
+            title="Orchestrator（${escHtml(tiersSummary)} · ${modeTitleHint}）${escHtml(qTitle)}"
           >
             ${quotaSvg}
             <span class="el-dot"></span>
@@ -4542,6 +5269,33 @@
         return;
       }
 
+      const orchSubTab = target.closest('[data-orch-submodel]');
+      if (orchSubTab && state.selectedGroup && state.selectedGroup.kind === 'orchestrator') {
+        const subKey = orchSubTab.dataset.orchSubmodel || '';
+        const sm = (state.selectedGroup.subModels || []).find((x) => x.key === subKey);
+        if (sm && !sm.disabled) {
+          if (!sm.hasLevel3 && sm.variants.length === 1) {
+            commitModelVariant(sm.variants[0]);
+            return;
+          }
+          state.selectedOrchSubModelKey = sm.key;
+          updateCenterStageOnly();
+        }
+        return;
+      }
+
+      const orchEffortBtn = target.closest('[data-orch-variant-idx]');
+      if (orchEffortBtn && state.selectedGroup && state.selectedGroup.kind === 'orchestrator') {
+        const subKey = orchEffortBtn.dataset.orchSubmodelKey || state.selectedOrchSubModelKey;
+        const idx = Number(orchEffortBtn.dataset.orchVariantIdx);
+        const sm = (state.selectedGroup.subModels || []).find((x) => x.key === subKey);
+        const variant = sm ? sm.variants[idx] : null;
+        if (variant && !variant.disabled) {
+          commitModelVariant(variant);
+        }
+        return;
+      }
+
       const effortBtn = target.closest('[data-variant-idx]');
       if (effortBtn && state.selectedGroup) {
         const idx = Number(effortBtn.dataset.variantIdx);
@@ -4608,6 +5362,12 @@
         if (!grp) return;
         state.showingUsagePanel = false;
         state.selectedGroup = grp;
+        const subModels = Array.isArray(grp.subModels) ? grp.subModels : [];
+        const activeSub =
+          subModels.find((sm) => sm.variants.some((v) => v.canonicalKey === state.activeModelKey)) ||
+          subModels.find((sm) => sm.key === grp.defaultSubModelKey) ||
+          subModels[0];
+        state.selectedOrchSubModelKey = activeSub ? activeSub.key : '';
         state.virtualElement = null;
         state.virtualPickedEffort = null;
         state.virtualFeedback = '';
@@ -4716,6 +5476,7 @@
     state.openedAt = Date.now();
     state.skeletonMounted = false;
     state.selectedGroup = null;
+    state.selectedOrchSubModelKey = '';
     state.virtualElement = null;
     state.virtualPickedEffort = null;
     state.virtualFeedback = '';
@@ -4898,12 +5659,14 @@
 
   function onDocumentKeyDown(e) {
     if (!state.open) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       if (state.selectedGroup || state.virtualElement || state.showingUsagePanel) {
         state.selectedGroup = null;
+        state.selectedOrchSubModelKey = '';
         state.virtualElement = null;
         state.virtualPickedEffort = null;
         state.virtualFeedback = '';
@@ -4915,10 +5678,42 @@
       return;
     }
 
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+      state.selectedGroup &&
+      state.selectedGroup.kind === 'orchestrator' &&
+      Array.isArray(state.selectedGroup.subModels) &&
+      state.selectedGroup.subModels.length > 1
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      const subs = state.selectedGroup.subModels;
+      const curIdx = Math.max(0, subs.findIndex((sm) => sm.key === state.selectedOrchSubModelKey));
+      const delta = e.key === 'ArrowRight' ? 1 : -1;
+      const nextSub = subs[(curIdx + delta + subs.length) % subs.length];
+      if (nextSub) {
+        state.selectedOrchSubModelKey = nextSub.key;
+        updateCenterStageOnly();
+      }
+      return;
+    }
+
     if (/^[1-9]$/.test(e.key)) {
       const idx = Number(e.key) - 1;
       if (state.selectedGroup) {
-        const variant = state.selectedGroup.variants[idx];
+        let variant = null;
+        if (
+          state.selectedGroup.kind === 'orchestrator' &&
+          Array.isArray(state.selectedGroup.subModels) &&
+          state.selectedGroup.subModels.some((sm) => sm.hasLevel3)
+        ) {
+          const activeSub =
+            state.selectedGroup.subModels.find((sm) => sm.key === state.selectedOrchSubModelKey) ||
+            state.selectedGroup.subModels[0];
+          variant = activeSub ? activeSub.variants[idx] : null;
+        } else {
+          variant = state.selectedGroup.variants[idx];
+        }
         if (variant && !variant.disabled) {
           e.preventDefault();
           e.stopPropagation();
@@ -5077,9 +5872,23 @@
         })),
         orchestratorModels: state.orchestratorModels.map((g) => ({
           id: g.id,
-          hasEffort: false,
+          hasSubmenu: !!g.hasSubmenu,
+          hasEffort: !!g.hasEffort,
           baseName: g.baseName,
-          tiers: g.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel),
+          subModels: (g.subModels || []).map((sm) => ({
+            baseName: sm.baseName,
+            shortName: sm.shortName,
+            vendor: sm.vendor,
+            hasLevel3: !!sm.hasLevel3,
+            efforts: sm.efforts || [],
+            quota: getQuotaForTarget({
+              baseName: sm.baseName,
+              vendor: sm.vendor || 'Google',
+              isOrchestrator: true,
+              orchestratorTier: sm.shortName || '',
+            }),
+          })),
+          tiers: (g.subModels || []).map((sm) => sm.shortName || sm.baseName),
           variants: g.variants.map((v) => v.rawLabel),
           quota: getQuotaForGroup(g),
         })),

@@ -2,6 +2,9 @@
 antigravity-hans-overlay.js
 hans-base-overlay.cache.js
 .overlay-sync.state.json
+.agy-pt-cdp-*.pid
+antigravity-hans-macos-*
+antigravity-hans-darwin-*
 *.bak*
 *.log
 *.exe
