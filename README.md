@@ -29,10 +29,10 @@
 | --- | --- | --- |
 | `periodic-model-picker.js` | macOS / Windows | 元素周期表模型选择器核心模块（Shadow DOM 隔离，v3.3.0） |
 | `periodic-model-config.json` | macOS / Windows | 配置文件（元素别名绑定、即将发布标记、经典模型白名单与配色） |
-| `macos/install.sh` | macOS | macOS 一键安装 / 更新 / 卸载脚本，自动生成 `~/Applications/Antigravity PT.app` |
-| `macos/launch-agy-pt.sh` | macOS | macOS 统一启动器（自动识别 Antigravity-Hans 联动模式或免汉化独立 CDP 模式） |
+| `macos/install.sh` | macOS | macOS 一键安装 / 更新 / 卸载脚本（自动拉取全局中文汉化基座并生成 `~/Applications/Antigravity PT.app`） |
+| `macos/launch-agy-pt.sh` | macOS | macOS 统一启动器（自动注入全局中文汉化 + 元素周期表，或联动 Antigravity-Hans 二进制） |
 | `macos/sync-hans-overlay.sh` | macOS | 从 macOS 版 `antigravity-hans-macos-*` 提取内嵌汉化并与本模块合成 `antigravity-hans-overlay.js` |
-| `macos/agy-pt-cdp.pl` | macOS | 零第三方依赖的原生 Perl CDP 注入守护进程（独立模式专用，支持多窗口与配置热重载） |
+| `macos/agy-pt-cdp.pl` | macOS | 零第三方依赖的原生 Perl CDP 注入守护进程（支持全局汉化 + 周期表双注入、多窗口与热重载） |
 | `Sync-HansOverlay.ps1` | Windows | 自动提取 `antigravity-hans-windows-amd64.exe` 内嵌汉化并与本模块合成 `antigravity-hans-overlay.js` |
 | `Install-AgyPT.ps1` | Windows | Windows 一键安装 / 更新 / 卸载脚本 |
 
@@ -40,20 +40,27 @@
 
 支持 Apple Silicon (`arm64`) 与 Intel (`x86_64`) Mac，**零第三方依赖**（仅使用 macOS 系统原生 `bash` 与 `/usr/bin/perl`，无需安装 Xcode 命令行工具、Python、Node.js 或 Homebrew）。
 
-提供两种运行模式，启动器默认自动选择：
-1. **免汉化独立模式（开箱即用）**：无需安装 `Antigravity-Hans`，直接以本机回环 CDP 端口驱动原版 `/Applications/Antigravity.app` 并自动注入元素周期表，支持多窗口发现与配置文件热重载。
-2. **Antigravity-Hans 联动模式（汉化 + 元素周期表）**：若你同时使用 [Antigravity-Hans](https://github.com/yuexps/Antigravity-Hans)（`antigravity-hans-macos-arm64` / `antigravity-hans-macos-amd64`），自动从 Mach-O 二进制提取最新内嵌汉化并合成 `antigravity-hans-overlay.js`，通过 `--trust-external-overlay` 启动。
+macOS 版**开箱默认自带全局中文汉化 + 118 元素周期表**，提供两种自动适配方式：
+1. **原生一站式模式（开箱即用，默认）**：无需额外下载 Go 二进制或折腾开发者签名，安装时自动拉取 [Antigravity-Hans](https://github.com/yuexps/Antigravity-Hans) 官方动态汉化基座（`hans-base-overlay.js`，MIT 协议），由原生 CDP 守护进程与元素周期表一起注入——同时具备**全局中文界面（含悬浮「中/EN」切换球）+ 118 元素周期表选模**；如不需要全局汉化可追加 `--no-hans`。
+2. **Antigravity-Hans 二进制联动模式**：若你已安装 `antigravity-hans-macos-arm64` / `antigravity-hans-macos-amd64`，自动从 Mach-O 二进制提取最新内嵌汉化并合成 `antigravity-hans-overlay.js`，通过 `--trust-external-overlay` 启动。
 
 ### 1. 一键安装
 
 ```bash
 cd agy-pt
 
-# 默认安装（若存在 ~/Library/Application Support/Antigravity-Hans 则自动联动，否则安装到 ~/Library/Application Support/AGY-PT）
+# 默认安装（自动配置全局中文汉化基座 + 元素周期表，并生成 ~/Applications/Antigravity PT.app）
 ./macos/install.sh
 
-# 若你的 Antigravity-Hans 放在自定义目录，可直接指定：
+# 更新上游最新全局中文汉化词库
+./macos/install.sh --update-hans
+
+# 若只要英文原版界面 + 中文元素周期表（跳过全局汉化）
+./macos/install.sh --no-hans
+
+# 若你已有 Antigravity-Hans 二进制或本地汉化脚本：
 ./macos/install.sh --hans-bin /path/to/antigravity-hans-macos-arm64
+./macos/install.sh --hans-overlay /path/to/antigravity-hans-overlay.js
 
 # 如需同时在 ~/.local/bin/agy-pt 创建终端快捷命令：
 ./macos/install.sh --link-bin
@@ -68,17 +75,17 @@ cd agy-pt
 - **终端启动**：
 
 ```bash
-# 自动选择模式（有 Hans 走联动，无 Hans 走独立模式）
+# 自动启动/挂载（全局中文汉化 + 元素周期表）
 "$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh"
 
-# 若 Antigravity 已在普通模式运行，自动优雅重启并启用周期表
+# 若 Antigravity 已在普通模式运行，自动优雅重启并启用汉化与周期表
 "$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh" --restart
 
-# 强制走免汉化独立模式 / 指定 Antigravity IDE
-"$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh" --mode standalone --target app
+# 仅保留英文原版界面 + 中文元素周期表 / 指定 Antigravity IDE
+"$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh" --no-hans
 "$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh" --target ide
 
-# 查看当前模式、进程与 CDP 状态
+# 查看当前模式、全局汉化基座、进程与 CDP 状态
 "$HOME/Library/Application Support/AGY-PT/launch-agy-pt.sh" --status
 ```
 

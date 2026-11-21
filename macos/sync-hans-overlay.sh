@@ -377,6 +377,7 @@ my $combined = join("\n",
 my $tmp_out = "$out_path.tmp.$$";
 write_raw_file($tmp_out, $combined);
 move($tmp_out, $out_path) or die "无法移动临时文件到 $out_path: $!\n";
+chmod(0644, $out_path);
 
 my $out_bytes = -s $out_path;
 

@@ -438,6 +438,8 @@
     ['x-low', 'xlow'],
     ['extra low', 'xlow'],
     ['extra-low', 'xlow'],
+    ['extra 低', 'xlow'],
+    ['extra-低', 'xlow'],
     ['超低', 'xlow'],
     ['fast', 'fast'],
     ['快', 'fast'],
@@ -466,6 +468,8 @@
     ['x-high', 'extra'],
     ['extra high', 'extra'],
     ['extra-high', 'extra'],
+    ['extra 高', 'extra'],
+    ['extra-高', 'extra'],
     ['very high', 'extra'],
     ['超高', 'extra'],
     ['极高', 'extra'],
@@ -639,7 +643,7 @@
     return String(str || '')
       .toLowerCase()
       .replace(/[（(]\s*(?:极低|minimal)\s*[）)]/g, '(minimal)')
-      .replace(/[（(]\s*(?:超低|xlow|x-low|extra[\s-]*low)\s*[）)]/g, '(xlow)')
+      .replace(/[（(]\s*(?:超低|xlow|x-low|extra[\s-]*(?:low|低))\s*[）)]/g, '(xlow)')
       .replace(/[（(]\s*(?:快|快速|fast)\s*[）)]/g, '(fast)')
       .replace(/[（(]\s*(?:低|low)\s*[）)]/g, '(low)')
       .replace(/[（(]\s*(?:中|中等|medium|med)\s*[）)]/g, '(medium)')
@@ -648,7 +652,7 @@
       .replace(/[（(]\s*(?:思考|深度思考|thinking)\s*[）)]/g, '(thinking)')
       .replace(/[（(]\s*(?:推理|reasoning)\s*[）)]/g, '(reasoning)')
       .replace(/[（(]\s*(?:高|high)\s*[）)]/g, '(high)')
-      .replace(/[（(]\s*(?:超高|极高|extra|xhigh|x-high|extra[\s-]*high|very\s*high)\s*[）)]/g, '(extra)')
+      .replace(/[（(]\s*(?:超高|极高|extra|xhigh|x-high|extra[\s-]*(?:high|高)|very\s*high)\s*[）)]/g, '(extra)')
       .replace(/[（(]\s*(?:最高|极限|max|maximum)\s*[）)]/g, '(max)')
       .replace(/\s+/g, ' ')
       .trim();
@@ -909,7 +913,7 @@
       // 3. 主菜单行尾空格强度词（如原版截图中的 "Gemini 4 Neon 中"、"Gemini 4 Hydrogen Extra"、"Claude Opus 5.5 中"）
       if (!effortKey) {
         const tailWordMatch = cleaned.match(
-          /^(.*?)\s+(extra[\s-]+high|very\s+high|extra[\s-]+low|x-high|xhigh|x-low|xlow|extra|minimal|medium|med|low|high|max|maximum|fast|thinking|reasoning|adaptive|极低|超低|快速|低|中|中等|高|超高|极高|最高|极限|思考|深度思考|推理|自适应)$/i
+          /^(.*?)\s+(extra[\s-]+(?:high|高)|very\s+high|extra[\s-]+(?:low|低)|x-high|xhigh|x-low|xlow|extra|minimal|medium|med|low|high|max|maximum|fast|thinking|reasoning|adaptive|极低|超低|快速|低|中|中等|高|超高|极高|最高|极限|思考|深度思考|推理|自适应)$/i
         );
         if (tailWordMatch && tailWordMatch[1].trim().length >= 2) {
           const candidate = tailWordMatch[2].trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1575,20 +1579,20 @@
     };
 
     const parsePctFromLine = (line) => {
-      // 必须明确带 left/remaining/剩余/used/已用 后缀，防止误抓普通文本中的任意百分号（避免中文后缀被 \b 截断）
-      const m = line.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(left|remaining|used)\b|(剩余|已用))/i);
+      // 必须明确带 left/remaining/剩余/used/已用 后缀或中文前缀，防止误抓普通文本中的任意百分号
+      const m = line.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(left|remaining|used)\b|(剩余|已用))|(剩余|已用)\s*(\d{1,3}(?:\.\d+)?)\s*%/i);
       if (!m) return null;
-      let val = Number(m[1]);
+      let val = Number(m[1] !== undefined ? m[1] : m[5]);
       if (Number.isNaN(val)) return null;
-      const suffix = m[2] || m[3] || '';
+      const suffix = m[2] || m[3] || m[4] || '';
       if (/^(used|已用)$/i.test(suffix)) {
         val = 100 - val;
       }
       return Math.max(0, Math.min(100, Math.round(val)));
     };
 
-    const isResetLine = (line) => /(?:resets?\s+in\b|重置于|后重置|将于.*重置)/i.test(line);
-    const isWeeklyKeyword = (line) => /(?:周额度|每周|周限额|\bweekly\b)/i.test(line);
+    const isResetLine = (line) => /(?:resets?\s+in\b|重置于|后重置|将于.*重置|距离重置|后恢复)/i.test(line);
+    const isWeeklyKeyword = (line) => /(?:周额度|每周|周限额|周上限|\bweekly\b)/i.test(line);
     const isFiveHourKeyword = (line) => /(?:\b5\s*h\b|5\s*小时|5\s*hours?)/i.test(line);
 
     const assignPct = (pool, bucket, pct, resetText = '') => {
@@ -1632,7 +1636,7 @@
 
       // 剥离百分比和 reset 后判断本行是否携带新的池标题（例如图 7 底部："Gemini 4 Argon 40% left"）
       const strippedTitle = line
-        .replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/gi, '')
+        .replace(/(?:\b\d{1,3}(?:\.\d+)?\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)|(?:剩余|已用)\s*\d{1,3}(?:\.\d+)?\s*%)/gi, '')
         .replace(/(?:weekly\s+limit\s*,?\s*)?resets?\s+in\s+[^·|]+/gi, '')
         .trim();
 
@@ -1684,7 +1688,7 @@
       }
 
       if (hasReset) {
-        const cleanReset = line.replace(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/gi, '').trim();
+        const cleanReset = line.replace(/(?:\b\d{1,3}(?:\.\d+)?\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)|(?:剩余|已用)\s*\d{1,3}(?:\.\d+)?\s*%)/gi, '').trim();
         if (pct !== null) assignPct(currentPool, currentBucket, pct, cleanReset);
         else attachReset(currentPool, currentBucket, cleanReset);
         continue;
@@ -1729,7 +1733,7 @@
 
   // 通过文本节点精准定位刚弹出的 View Usage 紧凑浮层（不依赖 role 属性，同时 100% 跳过聊天窗口）
   function findUsagePopoverByText(nativeMenuEl, ignoredMenus = null) {
-    const usageTextRe = /\b\d{1,3}(?:\.\d+)?\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)/i;
+    const usageTextRe = /\b\d{1,3}(?:\.\d+)?\s*%\s*(?:(?:left|remaining|used)\b|剩余|已用)|(?:剩余|已用)\s*\d{1,3}(?:\.\d+)?\s*%/i;
     const hitEls = [];
 
     const visitNode = (node) => {
@@ -2883,6 +2887,7 @@
       ].filter((g) => g && g.hasSubmenu && !g.unavailable && g.parentEl && g.parentEl.isConnected);
 
       let anyEffortChanged = false;
+      const prevActiveKey = state.activeModelKey;
       for (const grp of subGroups) {
         if (token !== state.probeToken || !state.open || !nativeMenu.isConnected) break;
         const subEl = await openAndWaitSubmenu(nativeMenu, grp.parentEl, 'effort', 260);
@@ -3010,7 +3015,7 @@
         }
       }
 
-      if (anyEffortChanged && token === state.probeToken && state.open) {
+      if ((anyEffortChanged || state.activeModelKey !== prevActiveKey) && token === state.probeToken && state.open) {
         refreshQuotaBordersAndPanels();
       }
     } finally {

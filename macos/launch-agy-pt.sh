@@ -9,6 +9,8 @@ MODE="auto"         # auto | hans | standalone
 TARGET="app"        # app | ide
 DATA_DIR=""
 HANS_BIN=""
+HANS_OVERLAY_PATH=""
+NO_HANS=0
 APP_PATH=""
 CDP_PORT=""
 RESTART=0
@@ -24,20 +26,22 @@ usage() {
 用法: launch-agy-pt.sh [选项]
 
 选项:
-  -m, --mode <mode>      运行模式: auto（默认，有 Hans 走联动，无 Hans 走独立）| hans | standalone
-  -t, --target <target>  目标客户端: app（Antigravity.app，默认）| ide（Antigravity IDE.app）
-  -d, --data-dir <dir>   AGY-PT / Antigravity-Hans 数据目录
-  -b, --hans-bin <file>  显式指定 antigravity-hans macOS 二进制路径
-      --app-path <path>  显式指定 .app 目录或可执行文件路径
-  -p, --port <port>      独立模式使用的本机 CDP 端口（默认自动选择 19222-19299 空闲端口）
-  -r, --restart          若 Antigravity 已在无调试模式下运行，自动优雅退出并重启
-      --detach           脱离当前终端/父进程会话在后台执行（适合在客户端内部触发重启）
-      --delay <sec>      启动前延迟秒数（常与 --detach --restart 配合使用）
-      --force-sync       Hans 模式下忽略缓存强制重新合成 antigravity-hans-overlay.js
-      --foreground       独立模式下在前台运行 CDP 守护进程（默认后台静默运行）
-      --gui              GUI 模式（用于 .app 包装器，出错或需重启时弹出原生对话框）
-      --status           查看当前环境、模式、进程与 CDP 状态
-  -h, --help             显示本帮助信息
+  -m, --mode <mode>         运行模式: auto（默认，有 Hans 走联动，无 Hans 走独立）| hans | standalone
+  -t, --target <target>     目标客户端: app（Antigravity.app，默认）| ide（Antigravity IDE.app）
+  -d, --data-dir <dir>      AGY-PT / Antigravity-Hans 数据目录
+  -b, --hans-bin <file>     显式指定 antigravity-hans macOS 二进制路径
+      --hans-overlay <file> 显式指定全局中文汉化基座脚本（如 hans-base-overlay.js）
+      --no-hans             禁用全局中文汉化，仅启用英文界面 + 中文元素周期表
+      --app-path <path>     显式指定 .app 目录或可执行文件路径
+  -p, --port <port>         独立模式使用的本机 CDP 端口（默认自动选择 19222-19299 空闲端口）
+  -r, --restart             若 Antigravity 已在无调试模式下运行，自动优雅退出并重启
+      --detach              脱离当前终端/父进程会话在后台执行（适合在客户端内部触发重启）
+      --delay <sec>         启动前延迟秒数（常与 --detach --restart 配合使用）
+      --force-sync          Hans 模式下忽略缓存强制重新合成 antigravity-hans-overlay.js
+      --foreground          独立模式下在前台运行 CDP 守护进程（默认后台静默运行）
+      --gui                 GUI 模式（用于 .app 包装器，出错或需重启时弹出原生对话框）
+      --status              查看当前环境、模式、进程与 CDP 状态
+  -h, --help                显示本帮助信息
 EOF
 }
 
@@ -56,6 +60,11 @@ while [ $# -gt 0 ]; do
     -b|--hans-bin)
       [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
       HANS_BIN="$2"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
+    --hans-overlay)
+      [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
+      HANS_OVERLAY_PATH="$2"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
+    --no-hans)
+      NO_HANS=1; ORIG_ARGS+=("$1"); shift ;;
     --app-path)
       [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
       APP_PATH="$2"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
@@ -115,12 +124,12 @@ fi
 
 case "$MODE" in
   auto|hans|standalone) ;;
-  *) echo "错误: 无效的 --mode: $MODE（可选: auto, hans, standalone）" >&2; exit 1 ;;
+  *) echo "错误: 无效的 --mode: ${MODE}（可选: auto, hans, standalone）" >&2; exit 1 ;;
 esac
 
 case "$TARGET" in
   app|ide) ;;
-  *) echo "错误: 无效的 --target: $TARGET（可选: app, ide）" >&2; exit 1 ;;
+  *) echo "错误: 无效的 --target: ${TARGET}（可选: app, ide）" >&2; exit 1 ;;
 esac
 
 gui_alert() {
@@ -244,7 +253,7 @@ elif [ -f "$SCRIPT_DIR/agy-pt-cdp.pl" ]; then
   CDP_SCRIPT="$SCRIPT_DIR/agy-pt-cdp.pl"
 fi
 
-# 2. 探测 Antigravity-Hans 二进制
+# 2. 探测 Antigravity-Hans 二进制与全局汉化基座脚本
 if [ -z "$HANS_BIN" ]; then
   if HANS_BIN="$(find_hans_bin_in_dir "$DATA_DIR")"; then
     :
@@ -255,6 +264,28 @@ if [ -z "$HANS_BIN" ]; then
   else
     HANS_BIN=""
   fi
+fi
+
+if [ "$NO_HANS" -eq 1 ]; then
+  HANS_OVERLAY_PATH=""
+elif [ -n "$HANS_OVERLAY_PATH" ]; then
+  if [ ! -f "$HANS_OVERLAY_PATH" ]; then
+    gui_alert "AGY-PT 启动失败" "未找到指定的全局汉化基座脚本: $HANS_OVERLAY_PATH"
+    exit 1
+  fi
+  HANS_OVERLAY_PATH="$(cd "$(dirname "$HANS_OVERLAY_PATH")" && pwd)/$(basename "$HANS_OVERLAY_PATH")"
+else
+  for ov_cand in \
+    "$DATA_DIR/hans-base-overlay.js" \
+    "$DATA_DIR/hans-base-overlay.cache.js" \
+    "$HOME/Library/Application Support/Antigravity-Hans/hans-base-overlay.js" \
+    "$HOME/Library/Application Support/Antigravity-Hans/hans-base-overlay.cache.js"
+  do
+    if [ -f "$ov_cand" ]; then
+      HANS_OVERLAY_PATH="$ov_cand"
+      break
+    fi
+  done
 fi
 
 # 3. 探测 Antigravity.app / Antigravity IDE.app 可执行文件路径
@@ -382,7 +413,12 @@ if [ "$SHOW_STATUS" -eq 1 ]; then
   echo "数据目录:       $DATA_DIR"
   echo "周期表脚本:     ${PICKER_PATH:-未检测到}"
   echo "配置文件:       ${CONFIG_PATH:-使用内置默认}"
-  echo "Hans 二进制:    ${HANS_BIN:-未安装（将使用免汉化独立模式）}"
+  if [ "$NO_HANS" -eq 1 ]; then
+    echo "全局汉化基座:   已关闭 (--no-hans)"
+  else
+    echo "全局汉化基座:   ${HANS_OVERLAY_PATH:-未启用（仅英文原版 + 中文周期表）}"
+  fi
+  echo "Hans 二进制:    ${HANS_BIN:-未安装（将使用原生 CDP 模式）}"
   if [ -n "$RUNNING_PID" ]; then
     if [ -n "$RUNNING_PORT" ]; then
       echo "客户端运行状态: 运行中 (PID=$RUNNING_PID, CDP=127.0.0.1:$RUNNING_PORT)"
@@ -434,7 +470,7 @@ if [ "$EFFECTIVE_MODE" = "hans" ]; then
   target_flag="--app"
   [ "$TARGET" = "ide" ] && target_flag="--ide"
 
-  echo "正在通过 Antigravity-Hans 启动 $APP_DISPLAY_NAME（汉化 + AGY-PT 元素周期表）..."
+  echo "正在通过 Antigravity-Hans 启动 ${APP_DISPLAY_NAME}（汉化 + AGY-PT 元素周期表）..."
   if [ "$GUI_MODE" -eq 1 ]; then
     LOG_DIR="$HOME/Library/Logs/AGY-PT"
     mkdir -p "$LOG_DIR"
@@ -449,7 +485,7 @@ fi
 # 模式 B: macOS 原生独立 CDP 模式（无需 Antigravity-Hans，零第三方依赖）
 # ============================================================================
 if [ -z "$RESOLVED_APP_BIN" ] || [ ! -x "$RESOLVED_APP_BIN" ]; then
-  gui_alert "未找到 $APP_DISPLAY_NAME" "未在 /Applications 或 ~/Applications 找到 $APP_BUNDLE_NAME，请先安装或使用 --app-path 指定路径。"
+  gui_alert "未找到 $APP_DISPLAY_NAME" "未在 /Applications 或 ~/Applications 找到 ${APP_BUNDLE_NAME}，请先安装或使用 --app-path 指定路径。"
   exit 1
 fi
 
@@ -521,7 +557,7 @@ if [ -z "$ATTACH_PORT" ]; then
     }
   fi
 
-  echo "正在启动 $APP_DISPLAY_NAME（本机 CDP 端口: 127.0.0.1:$ATTACH_PORT）..."
+  echo "正在启动 ${APP_DISPLAY_NAME}（本机 CDP 端口: 127.0.0.1:${ATTACH_PORT}）..."
   case "$RESOLVED_APP_BIN" in
     *.app/Contents/MacOS/*)
       APP_BUNDLE_DIR="${RESOLVED_APP_BIN%/Contents/MacOS/*}"
@@ -562,6 +598,9 @@ cdp_args=(
 )
 if [ -n "$CONFIG_PATH" ] && [ -f "$CONFIG_PATH" ]; then
   cdp_args+=(--config "$CONFIG_PATH")
+fi
+if [ "$NO_HANS" -eq 0 ] && [ -n "$HANS_OVERLAY_PATH" ] && [ -f "$HANS_OVERLAY_PATH" ]; then
+  cdp_args+=(--hans-overlay "$HANS_OVERLAY_PATH")
 fi
 if [ -n "$WATCH_PID" ]; then
   cdp_args+=(--watch-pid "$WATCH_PID")

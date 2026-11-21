@@ -12,6 +12,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 TARGET_DIR=""
 HANS_BIN=""
+HANS_OVERLAY_SRC=""
 APP_DIR="$HOME/Applications"
 BIN_DIR="$HOME/.local/bin"
 TARGET="app"         # app | ide
@@ -20,24 +21,29 @@ FORCE=0
 UNINSTALL=0
 CREATE_APP=1
 LINK_BIN=0
+NO_HANS=0
+UPDATE_HANS=0
 
 usage() {
   cat <<'EOF'
 用法: macos/install.sh [选项]
 
 选项:
-  -d, --target-dir <dir>  安装目录（默认：若存在 ~/Library/Application Support/Antigravity-Hans 则复用，否则 ~/Library/Application Support/AGY-PT）
-      --hans-dir <dir>    同 --target-dir，指定 Antigravity-Hans 目录
-  -b, --hans-bin <file>   显式指定 antigravity-hans macOS 二进制路径
-  -m, --mode <mode>       写入快捷应用默认模式: auto（默认）| hans | standalone
-  -t, --target <target>   目标客户端: app（Antigravity，默认）| ide（Antigravity IDE）
-      --app-dir <dir>     快捷启动 .app 生成目录（默认: ~/Applications）
-      --no-app            不生成 Antigravity PT.app 快捷启动应用
-      --link-bin          在 ~/.local/bin/agy-pt 创建命令行快捷软链（可用 --bin-dir 自定义目录）
-      --bin-dir <dir>     命令行软链目录（默认: ~/.local/bin）
-  -f, --force             覆盖已有的 periodic-model-config.json 配置
-  -u, --uninstall         一键卸载 AGY-PT（保留 Antigravity 原版及用户 Hans 二进制）
-  -h, --help              显示本帮助信息
+  -d, --target-dir <dir>    安装目录（默认：若存在 ~/Library/Application Support/Antigravity-Hans 则复用，否则 ~/Library/Application Support/AGY-PT）
+      --hans-dir <dir>      同 --target-dir，指定 Antigravity-Hans 目录
+  -b, --hans-bin <file>     显式指定 antigravity-hans macOS 二进制路径
+      --hans-overlay <file> 指定本地全局中文汉化脚本文件（离线安装时使用）
+      --update-hans         强制重新拉取最新官方 Antigravity-Hans 全局中文汉化基座
+      --no-hans             不下载/不启用全局中文汉化（仅英文界面 + 中文元素周期表）
+  -m, --mode <mode>         写入快捷应用默认模式: auto（默认）| hans | standalone
+  -t, --target <target>     目标客户端: app（Antigravity，默认）| ide（Antigravity IDE）
+      --app-dir <dir>       快捷启动 .app 生成目录（默认: ~/Applications）
+      --no-app              不生成 Antigravity PT.app 快捷启动应用
+      --link-bin            在 ~/.local/bin/agy-pt 创建命令行快捷软链（可用 --bin-dir 自定义目录）
+      --bin-dir <dir>       命令行软链目录（默认: ~/.local/bin）
+  -f, --force               覆盖已有的 periodic-model-config.json 配置与缓存
+  -u, --uninstall           一键卸载 AGY-PT（保留 Antigravity 原版及用户 Hans 二进制）
+  -h, --help                显示本帮助信息
 EOF
 }
 
@@ -49,6 +55,13 @@ while [ $# -gt 0 ]; do
     -b|--hans-bin)
       [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
       HANS_BIN="$2"; shift 2 ;;
+    --hans-overlay)
+      [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
+      HANS_OVERLAY_SRC="$2"; shift 2 ;;
+    --update-hans)
+      UPDATE_HANS=1; shift ;;
+    --no-hans)
+      NO_HANS=1; shift ;;
     -m|--mode)
       [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
       LAUNCHER_MODE="$2"; shift 2 ;;
@@ -183,6 +196,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
       "launch-agy-pt.sh" \
       "agy-pt-cdp.pl" \
       "antigravity-hans-overlay.js" \
+      "hans-base-overlay.js" \
       "hans-base-overlay.cache.js" \
       ".overlay-sync.state.json" \
       ".agy-pt-cdp-app.pid" \
@@ -257,11 +271,24 @@ else
   echo "保留已有配置（如需覆盖请追加 --force）: $DST_CFG"
 fi
 
-# 3. 若存在 Antigravity-Hans macOS 二进制，立即合成 antigravity-hans-overlay.js
+# 3. 准备全局中文汉化基座 &（如有 Hans 二进制）合成 antigravity-hans-overlay.js
 DETECTED_HANS="$HANS_BIN"
 if [ -z "$DETECTED_HANS" ]; then
   DETECTED_HANS="$(find_hans_bin_in_dir "$TARGET_DIR" || true)"
 fi
+
+DST_HANS_OVERLAY="$TARGET_DIR/hans-base-overlay.js"
+HANS_OVERLAY_URL="https://raw.githubusercontent.com/yuexps/Antigravity-Hans/main/antigravity-hans-overlay.js"
+
+validate_hans_overlay_file() {
+  local f="$1"
+  [ -f "$f" ] || return 1
+  local sz
+  sz="$(wc -c < "$f" | tr -d ' ')"
+  [ -n "$sz" ] && [ "$sz" -gt 1024 ] && [ "$sz" -le 2097152 ] || return 1
+  grep -q "__antigravityZhPatchInstalled" "$f" || return 1
+  return 0
+}
 
 if [ -n "$DETECTED_HANS" ] && [ -f "$DETECTED_HANS" ]; then
   echo "检测到 Antigravity-Hans 二进制: $DETECTED_HANS"
@@ -271,9 +298,35 @@ if [ -n "$DETECTED_HANS" ] && [ -f "$DETECTED_HANS" ]; then
     --picker "$TARGET_DIR/periodic-model-picker.js" \
     --config "$DST_CFG" \
     --force
+  if [ "$NO_HANS" -eq 0 ] && [ -f "$TARGET_DIR/hans-base-overlay.cache.js" ]; then
+    cp -f "$TARGET_DIR/hans-base-overlay.cache.js" "$DST_HANS_OVERLAY"
+    chmod 644 "$DST_HANS_OVERLAY"
+  fi
+elif [ "$NO_HANS" -eq 1 ]; then
+  echo "已跳过全局中文汉化（--no-hans），将以英文原版 + 元素周期表运行。"
 else
-  echo "未在 $TARGET_DIR 检测到 Antigravity-Hans 二进制，将以【原生免汉化独立 CDP 模式】运行。"
-  echo "提示: 日后如需搭配汉化，将 antigravity-hans-macos-arm64 / amd64 放入 $TARGET_DIR 即可自动启用联动模式。"
+  if [ -n "$HANS_OVERLAY_SRC" ]; then
+    if validate_hans_overlay_file "$HANS_OVERLAY_SRC"; then
+      cp -f "$HANS_OVERLAY_SRC" "$DST_HANS_OVERLAY"
+      chmod 644 "$DST_HANS_OVERLAY"
+      echo "全局中文汉化基座已就绪（本地导入）: $DST_HANS_OVERLAY"
+    else
+      echo "警告: 指定的全局汉化脚本无效（体积超限或缺少 __antigravityZhPatchInstalled 标记）: $HANS_OVERLAY_SRC" >&2
+    fi
+  elif [ "$UPDATE_HANS" -eq 1 ] || [ "$FORCE" -eq 1 ] || [ ! -f "$DST_HANS_OVERLAY" ]; then
+    TMP_HANS="$DST_HANS_OVERLAY.tmp.$$"
+    echo "正在拉取官方全局中文汉化基座 (yuexps/Antigravity-Hans, MIT)..."
+    if /usr/bin/curl -fsSL --connect-timeout 10 --max-time 30 "$HANS_OVERLAY_URL" -o "$TMP_HANS" 2>/dev/null && validate_hans_overlay_file "$TMP_HANS"; then
+      chmod 644 "$TMP_HANS"
+      mv -f "$TMP_HANS" "$DST_HANS_OVERLAY"
+      echo "全局中文汉化基座已就绪: ${DST_HANS_OVERLAY}（来源: yuexps/Antigravity-Hans, MIT）"
+    else
+      rm -f "$TMP_HANS"
+      echo "警告: 未能自动下载 Antigravity-Hans 全局汉化基座（离线或网络受限），本次仅启用元素周期表；联网后可运行 --update-hans 补装，或用 --hans-overlay 指定本地文件。" >&2
+    fi
+  else
+    echo "保留已有全局中文汉化基座（如需更新请追加 --update-hans）: $DST_HANS_OVERLAY"
+  fi
 fi
 
 # 4. 生成 macOS 原生快捷启动 .app 包装器（优先使用 osacompile 生成 Universal Mach-O 应用 + ad-hoc 签名）
@@ -304,6 +357,9 @@ if [ "$CREATE_APP" -eq 1 ]; then
   if [ -n "$HANS_BIN" ]; then
     Q_HANS_BIN="$(printf '%q' "$HANS_BIN")"
     EXTRA_HANS_ARG=" --hans-bin $Q_HANS_BIN"
+  fi
+  if [ "$NO_HANS" -eq 1 ]; then
+    EXTRA_HANS_ARG="${EXTRA_HANS_ARG} --no-hans"
   fi
 
   if [ -x /usr/bin/osacompile ]; then
@@ -346,8 +402,8 @@ EOF
     /usr/bin/plutil -replace CFBundleDisplayName -string "$WRAPPER_NAME" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleName -string "$WRAPPER_NAME" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleIdentifier -string "$WRAPPER_BUNDLE_ID" "$WRAPPER_APP/Contents/Info.plist"
-    /usr/bin/plutil -replace CFBundleShortVersionString -string "3.2.0" "$WRAPPER_APP/Contents/Info.plist"
-    /usr/bin/plutil -replace CFBundleVersion -string "320" "$WRAPPER_APP/Contents/Info.plist"
+    /usr/bin/plutil -replace CFBundleShortVersionString -string "3.3.0" "$WRAPPER_APP/Contents/Info.plist"
+    /usr/bin/plutil -replace CFBundleVersion -string "330" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace LSUIElement -bool true "$WRAPPER_APP/Contents/Info.plist"
   else
     mkdir -p "$WRAPPER_APP/Contents/MacOS" "$WRAPPER_APP/Contents/Resources"
@@ -378,9 +434,9 @@ EOF
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>3.2.0</string>
+  <string>3.3.0</string>
   <key>CFBundleVersion</key>
-  <string>320</string>
+  <string>330</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>LSUIElement</key>

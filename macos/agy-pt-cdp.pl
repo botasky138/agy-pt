@@ -15,16 +15,17 @@ use JSON::PP qw(decode_json encode_json);
 use Encode qw(decode_utf8 encode_utf8);
 use POSIX qw(strftime);
 
-my $port         = 0;
-my $picker_path  = '';
-my $config_path  = '';
-my $watch_pid    = 0;
-my $pid_file     = '';
-my $interval     = 2;
-my $startup_wait = 30;
-my $once         = 0;
-my $quiet        = 0;
-my $help         = 0;
+my $port              = 0;
+my $picker_path       = '';
+my $config_path       = '';
+my $hans_overlay_path = '';
+my $watch_pid         = 0;
+my $pid_file          = '';
+my $interval          = 2;
+my $startup_wait      = 30;
+my $once              = 0;
+my $quiet             = 0;
+my $help              = 0;
 
 $| = 1;
 
@@ -75,8 +76,24 @@ my $cached_payload = '';
 my $cached_hash    = '';
 
 sub load_payload_if_changed {
-  my $sig = file_stat_sig($picker_path) . '|' . file_stat_sig($config_path);
+  my $sig = file_stat_sig($hans_overlay_path) . '|' . file_stat_sig($picker_path) . '|' . file_stat_sig($config_path);
   return ($cached_payload, $cached_hash) if $sig eq $cached_sig && length($cached_payload);
+
+  my $hans_prefix = '';
+  if ($hans_overlay_path && -f $hans_overlay_path) {
+    my $hans_raw = read_raw_file($hans_overlay_path);
+    my $max_hans_bytes = 2 * 1024 * 1024;
+    if (length($hans_raw) > $max_hans_bytes) {
+      log_err("警告: 全局汉化脚本体积超出上限 (" . length($hans_raw) . " 字节)，已跳过: $hans_overlay_path");
+    } elsif (index($hans_raw, '__antigravityZhPatchInstalled') < 0) {
+      log_err("警告: 全局汉化脚本缺少 __antigravityZhPatchInstalled 标记，已跳过: $hans_overlay_path");
+    } else {
+      my $fp = substr(sha256_hex($hans_raw), 0, 16);
+      $hans_raw =~ s/^\xEF\xBB\xBF//;
+      $hans_raw =~ s/\s+\z//;
+      $hans_prefix = "window.__antigravityZhPatchRequestedFingerprint = \"$fp\";\n" . $hans_raw . "\n";
+    }
+  }
 
   my $config_json = '{}';
   if ($config_path && -f $config_path) {
@@ -95,12 +112,15 @@ sub load_payload_if_changed {
   my $picker_raw = read_raw_file($picker_path);
   $picker_raw =~ s/\s+\z//;
 
-  my $combined_bytes = join("\n",
+  my @parts;
+  push @parts, $hans_prefix if length($hans_prefix);
+  push @parts,
     '// AGY-PT macOS Standalone CDP Injection',
     "window.__ANTIGRAVITY_PERIODIC_CONFIG__ = $config_json;",
     $picker_raw,
-    ''
-  );
+    '';
+
+  my $combined_bytes = join("\n", @parts);
 
   $cached_sig     = $sig;
   $cached_hash    = sha256_hex($combined_bytes);
@@ -371,7 +391,7 @@ sub ws_send_frame {
     $masked = $payload_bytes ^ $mask_stream;
   }
 
-  return write_all($conn->{sock}, $header . $mask . $masked, 10);
+  return write_all($conn->{sock}, $header . $mask . $masked, 15);
 }
 
 sub ws_read_message {
@@ -446,7 +466,7 @@ sub cdp_call {
   my $json_bytes = JSON::PP->new->utf8(1)->encode($req_obj);
   return undef unless ws_send_frame($conn, 0x1, $json_bytes);
 
-  my $deadline = time() + 6;
+  my $deadline = time() + 12;
   while (1) {
     my $left = $deadline - time();
     return undef if $left <= 0;
@@ -514,6 +534,7 @@ sub run_main {
     'port=i'         => \$port,
     'picker=s'       => \$picker_path,
     'config=s'       => \$config_path,
+    'hans-overlay=s' => \$hans_overlay_path,
     'watch-pid=i'    => \$watch_pid,
     'pid-file=s'     => \$pid_file,
     'interval=i'     => \$interval,
@@ -528,16 +549,17 @@ sub run_main {
 用法: agy-pt-cdp.pl --port <PORT> --picker <periodic-model-picker.js> [选项]
 
 选项:
-  --port <N>          本机 127.0.0.1 CDP 调试端口（必需）
-  --picker <file>     periodic-model-picker.js 路径（必需）
-  --config <file>     periodic-model-config.json 路径（可选）
-  --watch-pid <PID>   关联的 Antigravity 主进程 PID，退出后自动结束守护进程
-  --pid-file <file>   写入守护进程 PID 文件（自动清理陈旧实例）
-  --interval <sec>    轮询间隔秒数（默认: 2）
-  --startup-wait <s>  等待 CDP 端口首次就绪的最大秒数（默认: 30）
-  --once              立即扫描并注入一次后退出
-  --quiet             静默模式（仅输出错误）
-  -h, --help          显示本帮助
+  --port <N>             本机 127.0.0.1 CDP 调试端口（必需）
+  --picker <file>        periodic-model-picker.js 路径（必需）
+  --config <file>        periodic-model-config.json 路径（可选）
+  --hans-overlay <file>  全局汉化基座脚本路径（如 hans-base-overlay.js，可选）
+  --watch-pid <PID>      关联的 Antigravity 主进程 PID，退出后自动结束守护进程
+  --pid-file <file>      写入守护进程 PID 文件（自动清理陈旧实例）
+  --interval <sec>       轮询间隔秒数（默认: 2）
+  --startup-wait <s>     等待 CDP 端口首次就绪的最大秒数（默认: 30）
+  --once                 立即扫描并注入一次后退出
+  --quiet                静默模式（仅输出错误）
+  -h, --help             显示本帮助
 EOF
     exit($help ? 0 : 1);
   }
@@ -572,7 +594,8 @@ EOF
     }
   }
 
-  log_msg("启动 CDP 注入守护进程 (127.0.0.1:$port, picker=$picker_path" . ($watch_pid ? ", watch_pid=$watch_pid" : '') . ")");
+  my $hans_info = ($hans_overlay_path && -f $hans_overlay_path) ? ", hans_overlay=$hans_overlay_path" : ", hans_overlay=off";
+  log_msg("启动 CDP 注入守护进程 (127.0.0.1:$port, picker=$picker_path$hans_info" . ($watch_pid ? ", watch_pid=$watch_pid" : '') . ")");
 
   my %injected; # target_id => "$url|$payload_hash"
   my $seen_ready   = 0;
@@ -604,7 +627,8 @@ EOF
           $total_ok++;
           my $title = $t->{title} // $url // $tid;
           $title = substr($title, 0, 60) if length($title) > 60;
-          log_msg("已注入元素周期表 -> [$tid] $title");
+          my $what = ($hans_overlay_path && -f $hans_overlay_path) ? '全局汉化 + 元素周期表' : '元素周期表';
+          log_msg("已注入${what} -> [$tid] $title");
         } else {
           log_err("注入失败 [$tid]: $err");
         }
