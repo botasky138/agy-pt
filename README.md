@@ -16,18 +16,20 @@
     - `Gemini 4 Argon` (`18 Ar`)、`Gemini 3.8 Flash`、`Claude Opus 5.5`、`Claude Sonnet 5.5`：`低 / 中 / 高`
     - `GPT-OSS 120B (Medium)`：单一固定版本，直接切换
 - **表外模型与第三方模型分区**
-  - 元素表下方单独放置 `3.8 Flash` 模块与升级后的 `Orchestrator` 模块：完整适配原版三级级联结构（`Gemini 4 Neon` 4 档、`Gemini 4 Argon` 3 档、`Claude Opus 5.5` 3 档，及未来新增模型自动探测），各底层模型独立映射对应额度池。
+  - 元素表下方单独放置 `3.8 Flash` 模块与升级后的 `Orchestrator` 模块：完整适配原版三级级联结构（`Gemini 4 Neon` 4 档、`Gemini 4 Carbon` 3 档、`Gemini 4 Argon` 3 档、`Claude Opus 5.5` 3 档，及未来新增模型自动探测），各底层模型独立映射对应额度池。
   - 底部 `Other models` 展示 Claude、GPT、DeepSeek 等其他厂商模型。
 - **实时额度边框（单层 / 内外双层）**
   - 自动静默解析原版 `View Usage` 实时额度池，直接用顺时针 SVG 边框长度展示剩余额度：**满额整圈显现，消耗后按比例缩短，用完时边框消失**。
   - 同一模型同时存在每周与 5 小时两个额度池时（如 Gemini 模型、Claude 和 GPT 模型），以内外两层边框同时展示（**外框绿 = 周额度**，**内框蓝 = 5h 额度**）；单池模型（如 `Gemini 4 Argon` 仅周额度）仅展示单层外框。
   - 右上角提供「用量详情」面板与「刷新用量」按钮，悬停任意模型也可查看具体百分比与重置倒计时。
+- **v3.3.2 界面优化**
+  - 重构中央「实时额度用量」面板、`Orchestrator` 卡片、各模型副标题与总览悬浮预览文本排版，去除多余滚动条与文本省略截断，在标准及窄屏窗口下均可零滚动、无截断完整直显。
 
 ## 文件说明
 
 | 文件 | 适用平台 | 作用 |
 | --- | --- | --- |
-| `periodic-model-picker.js` | macOS / Windows | 元素周期表模型选择器核心模块（Shadow DOM 隔离，v3.3.0） |
+| `periodic-model-picker.js` | macOS / Windows | 元素周期表模型选择器核心模块（Shadow DOM 隔离，v3.3.2） |
 | `periodic-model-config.json` | macOS / Windows | 配置文件（元素别名绑定、即将发布标记、经典模型白名单与配色） |
 | `macos/install.sh` | macOS | macOS 一键安装 / 更新 / 卸载脚本（自动拉取全局中文汉化基座并生成 `~/Applications/Antigravity PT.app`） |
 | `macos/launch-agy-pt.sh` | macOS | macOS 统一启动器（自动注入全局中文汉化 + 元素周期表，或联动 Antigravity-Hans 二进制） |

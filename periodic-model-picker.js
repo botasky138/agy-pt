@@ -17,8 +17,8 @@
     hostName === '';
   if (!isAllowedOrigin) return;
 
-  const MODULE_VERSION = '3.3.0-20261121';
-  const MODULE_BUILD = 330;
+  const MODULE_VERSION = '3.3.2-20261123';
+  const MODULE_BUILD = 332;
   const HOST_ID = 'ag-periodic-model-picker-host';
   const CLOAK_STYLE_ID = 'ag-periodic-model-picker-cloak-style';
   const STORAGE_COMING_SOON_KEY = 'ag_periodic_picker_coming_soon_v2';
@@ -103,6 +103,14 @@
         efforts: ['low', 'medium', 'high', 'extra'],
       },
       {
+        baseName: 'Gemini 4 Carbon',
+        shortName: 'Carbon',
+        vendor: 'Google',
+        accent: '#a855f7',
+        hasLevel3: true,
+        efforts: ['low', 'medium', 'high'],
+      },
+      {
         baseName: 'Gemini 4 Argon',
         shortName: 'Argon',
         vendor: 'Google',
@@ -149,14 +157,14 @@
         symbol: 'He',
         codename: 'Helium',
         zhName: '氦 · 轻量级',
-        note: '即将发布 · 轻量高速模型（传闻接替 Flash 轻量档），上线后自动亮起',
+        note: '即将发布 · 轻量高速模型，上线后自动亮起',
         accent: '#38bdf8',
       },
       {
         symbol: 'Kr',
         codename: 'Krypton',
         zhName: '氪 · 下一代旗舰',
-        note: '即将发布 · 下一代高阶深度推理旗舰（内部测试节点），上线后自动亮起',
+        note: '即将发布 · 下一代高阶推理旗舰，上线后自动亮起',
         accent: '#f59e0b',
       },
     ],
@@ -2230,12 +2238,39 @@
     if (!quota) return '';
     const parts = [];
     if (quota.weekly && typeof quota.weekly.pct === 'number') {
-      const r = quota.weekly.resetText ? ` (${quota.weekly.resetText})` : '';
+      const c = formatCompactResetText(quota.weekly.resetText);
+      const r = c ? ` (${c})` : '';
       parts.push(`周额度 ${quota.weekly.pct}%${r}`);
     }
     if (quota.fiveHour && typeof quota.fiveHour.pct === 'number') {
-      const r = quota.fiveHour.resetText ? ` (${quota.fiveHour.resetText})` : '';
+      const c = formatCompactResetText(quota.fiveHour.resetText);
+      const r = c ? ` (${c})` : '';
       parts.push(`5h ${quota.fiveHour.pct}%${r}`);
+    }
+    return parts.join(' · ');
+  }
+
+  function formatQuotaResetSummary(quota) {
+    if (!quota) return '';
+    const parts = [];
+    const w = formatCompactResetText(quota.weekly?.resetText);
+    if (w) parts.push(`周 ${w}`);
+    const f = formatCompactResetText(quota.fiveHour?.resetText);
+    if (f) parts.push(`5h ${f}`);
+    return parts.join(' · ');
+  }
+
+  function formatQuotaCompactText(quota) {
+    if (!quota) return '';
+    const stripArrow = (s) => formatCompactResetText(s).replace(/^⟳\s*/, '').trim();
+    const parts = [];
+    if (quota.weekly && typeof quota.weekly.pct === 'number') {
+      const w = stripArrow(quota.weekly.resetText);
+      parts.push(`周 ${quota.weekly.pct}%${w ? ` (${w})` : ''}`);
+    }
+    if (quota.fiveHour && typeof quota.fiveHour.pct === 'number') {
+      const f = stripArrow(quota.fiveHour.resetText);
+      parts.push(`5h ${quota.fiveHour.pct}%${f ? ` (${f})` : ''}`);
     }
     return parts.join(' · ');
   }
@@ -2252,6 +2287,36 @@
       chips.push(`<span class="quota-mini-chip" style="--qc:${c}">5h ${quota.fiveHour.pct}%</span>`);
     }
     return chips.join('');
+  }
+
+  function formatCompactResetText(resetText) {
+    const raw = String(resetText || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    const enMatch = raw.match(/(?:resets?\s+in\s+|in\s+)([0-9]+\s*[dhms](?:\s+[0-9]+\s*[dhms])*)/i);
+    if (enMatch) return `⟳ ${enMatch[1].replace(/\s+/g, ' ').trim()}`;
+    const zhBefore = raw.match(/([0-9]+\s*(?:天|小时|分钟?|秒|日|h|d|m)(?:\s*[0-9]+\s*(?:天|小时|分钟?|秒|日|h|d|m))*)\s*后/i);
+    if (zhBefore) return `⟳ ${zhBefore[1].replace(/\s+/g, '')}`;
+    const cleaned = raw
+      .replace(/^(?:weekly|5-hour|5h)\s*limit[,:：\s-]*/i, '')
+      .replace(/^(?:resets?\s*(?:in|at)?|重置于|后重置)[:：\s-]*/i, '')
+      .trim();
+    return cleaned ? `⟳ ${cleaned}` : '';
+  }
+
+  function formatOrchTabLabel(subModel, totalCount) {
+    const base = String(subModel?.baseName || '').trim();
+    const shortName = String(subModel?.shortName || '').trim();
+    if (!base) return shortName;
+    const count = Number(totalCount) || 0;
+    if (count <= 3) return base;
+    if (count === 4) {
+      const compact = base
+        .replace(/^Gemini\s+(\d+(?:\.\d+)?)\s+/i, 'G$1 ')
+        .replace(/^Claude\s+/i, '')
+        .trim();
+      return compact || shortName || base;
+    }
+    return shortName || base;
   }
 
   // ============================================================================
@@ -3536,7 +3601,7 @@
     }
 
     if (!handledByHook) {
-      state.virtualFeedback = `虚拟预览已选 ${el.symbol} · ${effortMeta.zh} (${effortMeta.en}) — 真实模型未上线，未改动当前实际模型`;
+      state.virtualFeedback = `虚拟预览：${el.symbol} · ${effortMeta.zh} (${effortMeta.en})（未上线，未改动实际模型）`;
     }
     updateCenterStageOnly();
   }
@@ -3838,29 +3903,33 @@
       }
 
       .orch-model-tabs {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin: 3px 0 1px;
-        overflow-x: auto;
-        padding-bottom: 1px;
+        display: grid;
+        grid-template-columns: repeat(var(--orch-tab-cols, 4), minmax(0, 1fr));
+        gap: 5px;
+        margin: 1px 0;
+        overflow: visible;
       }
 
       .orch-model-tab {
         appearance: none;
-        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 4px;
         border: 1px solid var(--border-pill);
         background: var(--bg-pill);
         color: var(--text-secondary);
         font-size: 11px;
         font-weight: 500;
-        padding: 3px 9px;
+        line-height: 1.2;
+        padding: 3px 6px;
         border-radius: 999px;
         cursor: pointer;
         font-family: inherit;
+        white-space: nowrap;
+        overflow: hidden;
         transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
       }
 
@@ -3878,17 +3947,54 @@
         box-shadow: 0 0 0 1px var(--tab-accent, #a855f7);
       }
 
+      .orch-tab-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .orch-tab-count {
+        flex-shrink: 0;
         font-size: 9.5px;
-        opacity: 0.75;
+        opacity: 0.78;
+      }
+
+      .center-stage.picking.orch-stage {
+        padding: 6px 10px;
+        gap: 3px;
+      }
+
+      .center-stage.picking.orch-stage .effort-symbol-badge {
+        width: 26px;
+        height: 26px;
+        font-size: 11.5px;
+        border-radius: 7px;
+      }
+
+      .center-stage.picking.orch-stage .effort-model-name {
+        font-size: 12.5px;
+      }
+
+      .center-stage.picking.orch-stage .effort-model-sub {
+        font-size: 10px;
+        margin-top: 0;
+        line-height: 1.15;
       }
 
       .center-stage.orch-stage .effort-grid {
-        margin: 3px 0 2px;
+        margin: 1px 0;
+        gap: 5px;
       }
 
       .center-stage.orch-stage .effort-btn {
-        padding: 4px 7px;
+        padding: 3.5px 7px;
+        gap: 1px;
+      }
+
+      .center-stage.picking.orch-stage .effort-footer {
+        font-size: 9.5px;
+        line-height: 1.15;
       }
 
       .legend-row {
@@ -3920,6 +4026,13 @@
         text-overflow: ellipsis;
       }
 
+      .preview-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .preview-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px; flex-shrink: 0; }
       .preview-badge.released { background: rgba(76, 139, 245, 0.16); color: #7db0ff; border: 1px solid rgba(76, 139, 245, 0.35); }
       .preview-badge.soon { background: rgba(245, 158, 11, 0.14); color: #fbbf24; border: 1px dashed rgba(245, 158, 11, 0.5); }
@@ -3941,27 +4054,83 @@
       }
 
       /* 中央用量详情面板 */
+      .center-stage.picking.usage-stage {
+        padding: 6px 10px;
+        gap: 4px;
+      }
+
+      .center-stage.picking.usage-stage .effort-symbol-badge {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+        border-radius: 7px;
+      }
+
+      .center-stage.picking.usage-stage .effort-model-name {
+        font-size: 12.5px;
+      }
+
+      .usage-header-hint {
+        font-size: 10px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .center-stage.picking.usage-stage .effort-footer {
+        font-size: 9.5px;
+        line-height: 1.15;
+      }
+
       .usage-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 7px;
-        margin: 5px 0 3px;
-        overflow-y: auto;
+        grid-template-columns: repeat(var(--usage-cols, 2), minmax(0, 1fr));
+        gap: 6px;
+        margin: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: visible;
+      }
+
+      .usage-grid.usage-grid-many {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+      }
+
+      .usage-grid.usage-grid-4 {
+        gap: 4px;
+      }
+      .usage-grid.usage-grid-4 .usage-card {
+        padding: 4px 6px;
+        gap: 3px;
+      }
+      .usage-grid.usage-grid-4 .usage-row-top {
+        gap: 2px;
+        font-size: 9.5px;
+      }
+      .usage-grid.usage-grid-4 .usage-reset-inline {
+        font-size: 8.5px;
+        margin-right: 1px;
       }
 
       .usage-card {
         background: var(--bg-pill);
         border: 1px solid var(--border-pill);
-        border-radius: 9px;
-        padding: 6px 8px;
+        border-radius: 8px;
+        padding: 5px 8px;
         display: flex;
         flex-direction: column;
+        justify-content: center;
         gap: 4px;
+        min-width: 0;
+        overflow: hidden;
       }
 
       .usage-card-title {
         font-size: 11px;
         font-weight: 600;
+        line-height: 1.2;
         color: var(--text-primary);
         white-space: nowrap;
         overflow: hidden;
@@ -3972,15 +4141,39 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
+        min-width: 0;
       }
 
       .usage-row-top {
         display: flex;
-        align-items: center;
+        align-items: baseline;
         justify-content: space-between;
+        gap: 4px;
         font-size: 10px;
+        line-height: 1.15;
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
+        min-width: 0;
+      }
+
+      .usage-metric-label {
+        flex-shrink: 0;
+      }
+
+      .usage-reset-inline {
+        font-size: 9px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1 1 auto;
+        text-align: right;
+        margin-right: 2px;
+      }
+
+      .usage-pct {
+        flex-shrink: 0;
+        font-weight: 600;
       }
 
       .usage-bar-track {
@@ -3994,14 +4187,6 @@
         height: 100%;
         border-radius: 99px;
         transition: width 240ms ease;
-      }
-
-      .usage-reset {
-        font-size: 9px;
-        color: var(--text-muted);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
 
       /* 推力 / 思考强度选择面板 & 虚拟选择窗口头部 */
@@ -4050,7 +4235,7 @@
       .effort-back-btn:hover { color: var(--text-primary); background: var(--bg-pill-hover); }
       .effort-back-btn.pinned { border-color: rgba(245, 158, 11, 0.55); color: #fbbf24; background: rgba(245, 158, 11, 0.12); }
 
-      .effort-grid { display: flex; align-items: stretch; gap: 6px; margin: 5px 0 3px; overflow-x: auto; padding-bottom: 1px; }
+      .effort-grid { display: flex; align-items: stretch; gap: 6px; margin: 5px 0 3px; overflow: visible; padding-bottom: 0; }
 
       .effort-btn {
         flex: 1 1 0;
@@ -4060,7 +4245,7 @@
         background: var(--bg-pill);
         color: var(--text-primary);
         border-radius: 9px;
-        padding: 5px 7px;
+        padding: 4.5px 6px;
         text-align: left;
         cursor: pointer;
         transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
@@ -4088,10 +4273,11 @@
       .effort-btn.virtual-opt.picked { border-style: solid; border-color: var(--stage-accent, #94a3b8); background: var(--stage-accent-bg, rgba(148, 163, 184, 0.18)); }
       .effort-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-      .effort-btn-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-      .effort-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-      .effort-en { font-size: 9.5px; color: var(--text-muted); margin-left: 3px; font-weight: 500; }
-      .effort-kbd { font-size: 9px; color: var(--text-muted); border: 1px solid var(--border-pill); border-radius: 4px; padding: 0 4px; line-height: 14px; }
+      .effort-btn-top { display: flex; align-items: center; justify-content: space-between; gap: 3px; }
+      .effort-btn-labels { display: inline-flex; align-items: baseline; min-width: 0; white-space: nowrap; overflow: hidden; }
+      .effort-name { font-size: 11.5px; font-weight: 600; color: var(--text-primary); }
+      .effort-en { font-size: 8.5px; color: var(--text-muted); margin-left: 2px; font-weight: 500; }
+      .effort-kbd { font-size: 9px; color: var(--text-muted); border: 1px solid var(--border-pill); border-radius: 4px; padding: 0 3.5px; line-height: 14px; }
 
       .effort-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
       .effort-bar { width: 3px; border-radius: 1px; background: rgba(148, 163, 184, 0.26); }
@@ -4126,7 +4312,7 @@
 
       .el-num { position: absolute; top: 5px; left: 5.5px; font-size: 7.5px; line-height: 1; opacity: 0.7; font-variant-numeric: tabular-nums; z-index: 1; }
       .el-sym { font-size: clamp(11.5px, 1.3vw, 13.5px); font-weight: 700; line-height: 1; margin-top: 4px; letter-spacing: -0.01em; z-index: 1; }
-      .el-subname { font-size: 6.8px; line-height: 1; margin-top: 2px; opacity: 0.92; letter-spacing: -0.02em; max-width: 88%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 1; }
+      .el-subname { font-size: 6.2px; line-height: 1; margin-top: 2px; opacity: 0.92; letter-spacing: -0.02em; max-width: 96%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 1; }
 
       .el-placeholder { border-radius: 7px; border: 1px solid var(--border-cell); background: var(--bg-placeholder); color: var(--text-muted); font-size: 9.5px; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 
@@ -4174,7 +4360,7 @@
       .el-soon-ring { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 99px; border: 1.4px solid var(--el-accent); animation: agPulseRing 2.4s ease-in-out infinite; }
 
       /* 周期表下方扩展行（唯一 1 个 3.8 Flash + 唯一 1 个合并后的 Orchestrator 模块） */
-      .gm-strip { grid-row: 13; grid-column: 5 / 20; display: flex; align-items: stretch; gap: 8px; overflow-x: auto; padding: 1px 0; }
+      .gm-strip { grid-row: 13; grid-column: 5 / 20; display: flex; align-items: stretch; gap: 8px; overflow: visible; padding: 1px 0; }
       .gm-row-tag { grid-row: 13; grid-column: 2 / 5; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #7dd3fc; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.24); border-radius: 7px; padding: 0 6px; white-space: nowrap; }
 
       .gm-cell {
@@ -4207,7 +4393,7 @@
       .gm-cell.active { box-shadow: 0 0 14px var(--el-glow-strong); }
       .gm-cell.selected { box-shadow: 0 0 0 1.5px #ffffff, 0 6px 18px var(--el-glow-strong); }
 
-      .gm-ver { font-size: 8.5px; opacity: 0.86; line-height: 1; margin-bottom: 2px; font-variant-numeric: tabular-nums; z-index: 1; }
+      .gm-ver { font-size: 8.5px; opacity: 0.86; line-height: 1; margin-bottom: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; z-index: 1; }
       .gm-name { font-size: 12px; font-weight: 600; line-height: 1.1; white-space: nowrap; z-index: 1; }
 
       /* 底部其他厂商模型区域（同步支持双层/单层额度边框） */
@@ -4250,6 +4436,13 @@
         .panel { padding: 11px 14px 10px; border-radius: 14px; }
         .header { margin-bottom: 5px; }
         .ptable { grid-template-rows: ${compactGridRows}; gap: 2.5px; padding: 2px 4px 4px 2px; }
+        .center-stage.picking.usage-stage { padding: 4px 9px; gap: 2.5px; }
+        .center-stage.picking.usage-stage .effort-symbol-badge { width: 22px; height: 22px; font-size: 10.5px; }
+        .usage-card { padding: 3.5px 7px; gap: 2.5px; }
+        .center-stage.picking.orch-stage { padding: 4px 9px; gap: 2px; }
+        .center-stage.picking.orch-stage .effort-symbol-badge { width: 24px; height: 24px; font-size: 11px; }
+        .orch-model-tab { padding: 2px 5px; font-size: 10.5px; }
+        .center-stage.orch-stage .effort-btn { padding: 2.5px 6px; }
         .other-section { margin-top: 7px; padding-top: 7px; }
       }
     `;
@@ -4271,33 +4464,36 @@
     // 模式 0：用量详情总览面板（完整整合原版 View Usage 全部额度池数据）
     if (state.showingUsagePanel) {
       const pools = state.usageData && Array.isArray(state.usageData.pools) ? state.usageData.pools : [];
+      const compactMetricLabels = pools.length >= 4;
       const cardsHtml = pools.length
         ? pools
             .map((pool) => {
               const rows = [];
               if (pool.weekly && typeof pool.weekly.pct === 'number') {
                 const c = getWeeklyStrokeColor(pool.weekly.pct);
+                const compactReset = formatCompactResetText(pool.weekly.resetText);
                 rows.push(`
                   <div class="usage-row">
                     <div class="usage-row-top">
-                      <span>外框 · 周额度</span>
-                      <strong style="color:${c}">${pool.weekly.pct}% left</strong>
+                      <span class="usage-metric-label">${compactMetricLabels ? '周' : '外框 · 周'}</span>
+                      ${compactReset ? `<span class="usage-reset-inline" title="${escHtml(pool.weekly.resetText)}">${escHtml(compactReset)}</span>` : ''}
+                      <strong class="usage-pct" style="color:${c}">${pool.weekly.pct}%</strong>
                     </div>
                     <div class="usage-bar-track"><div class="usage-bar-fill" style="width:${pool.weekly.pct}%;background:${c}"></div></div>
-                    ${pool.weekly.resetText ? `<div class="usage-reset">${escHtml(pool.weekly.resetText)}</div>` : ''}
                   </div>
                 `);
               }
               if (pool.fiveHour && typeof pool.fiveHour.pct === 'number') {
                 const c = getFiveHourStrokeColor(pool.fiveHour.pct);
+                const compactReset = formatCompactResetText(pool.fiveHour.resetText);
                 rows.push(`
                   <div class="usage-row">
                     <div class="usage-row-top">
-                      <span>内框 · 5h limit</span>
-                      <strong style="color:${c}">${pool.fiveHour.pct}% left</strong>
+                      <span class="usage-metric-label">${compactMetricLabels ? '5h' : '内框 · 5h'}</span>
+                      ${compactReset ? `<span class="usage-reset-inline" title="${escHtml(pool.fiveHour.resetText)}">${escHtml(compactReset)}</span>` : ''}
+                      <strong class="usage-pct" style="color:${c}">${pool.fiveHour.pct}%</strong>
                     </div>
                     <div class="usage-bar-track"><div class="usage-bar-fill" style="width:${pool.fiveHour.pct}%;background:${c}"></div></div>
-                    ${pool.fiveHour.resetText ? `<div class="usage-reset">${escHtml(pool.fiveHour.resetText)}</div>` : ''}
                   </div>
                 `);
               }
@@ -4314,10 +4510,12 @@
       const timeStr = state.usageData?.updatedAt
         ? new Date(state.usageData.updatedAt).toLocaleTimeString('zh-CN', { hour12: false })
         : '';
+      const usageCols = Math.min(Math.max(pools.length, 1), 4);
+      const usageGridClass = pools.length > 4 ? 'usage-grid-many' : pools.length === 4 ? 'usage-grid-4' : '';
 
       return `
         <div
-          class="center-stage picking"
+          class="center-stage picking usage-stage"
           style="--stage-accent:#34d399;--stage-accent-bg:rgba(52,211,153,0.14);--stage-accent-border:rgba(52,211,153,0.42);"
         >
           <div class="effort-header">
@@ -4328,9 +4526,9 @@
               </div>
               <div class="effort-title-wrap">
                 <div class="effort-title-line">
-                  <span class="effort-model-name">实时额度用量（已同步到元素表边框）</span>
+                  <span class="effort-model-name">实时额度用量</span>
+                  <span class="usage-header-hint">外框周额度 · 内框5h · 满额全显</span>
                 </div>
-                <div class="effort-model-sub">满额=整圈显现，用完=边框消失 · 双池用外层(周)+内层(5h)双边框表示</div>
               </div>
             </div>
             <div class="stage-actions">
@@ -4338,9 +4536,9 @@
               <button type="button" class="effort-back-btn" data-action="back-overview">← 返回</button>
             </div>
           </div>
-          <div class="usage-grid">${cardsHtml}</div>
+          <div class="usage-grid ${usageGridClass}" style="--usage-cols:${usageCols}">${cardsHtml}</div>
           <div class="effort-footer">
-            <span>${timeStr ? `最近同步：${timeStr}` : '实时对接原版 View Usage'}</span>
+            <span>${timeStr ? `最近同步：${timeStr} · ` : ''}已同步到元素表边框</span>
             <span>Esc 返回</span>
           </div>
         </div>
@@ -4373,12 +4571,14 @@
             : null;
           const quotaChipsHtml = formatQuotaShortChips(activeQuota);
 
+          const orchTabCols = Math.min(Math.max(subModels.length, 1), 6);
           const modelTabsHtml = subModels
             .map((sm) => {
               const isTabSelected = activeSub && sm.key === activeSub.key;
               const isTabRunning = sm.variants.some((v) => v.canonicalKey === state.activeModelKey);
               const smAccent = sm.accent || '#a855f7';
               const countHint = sm.efforts.length > 0 ? `${sm.efforts.length}档` : '直选';
+              const tabLabel = formatOrchTabLabel(sm, subModels.length);
               return `
                 <button
                   type="button"
@@ -4388,7 +4588,7 @@
                   title="${escHtml(sm.baseName)}（${escHtml(countHint)}）"
                 >
                   <span class="orch-tier-dot" style="--tier-color:${smAccent};margin-right:0"></span>
-                  <span>${escHtml(sm.baseName)}</span>
+                  <span class="orch-tab-label">${escHtml(tabLabel)}</span>
                   <span class="orch-tab-count">${isTabRunning ? '✓' : escHtml(countHint)}</span>
                 </button>
               `;
@@ -4422,7 +4622,7 @@
                   title="${escHtml(v.rawLabel)}"
                 >
                   <div class="effort-btn-top">
-                    <div>
+                    <div class="effort-btn-labels">
                       <span class="effort-name">${escHtml(nameZh)}</span>
                       ${nameEn ? `<span class="effort-en">${escHtml(nameEn)}</span>` : ''}
                     </div>
@@ -4437,9 +4637,13 @@
             })
             .join('');
 
+          const resetInfo = formatQuotaResetSummary(activeQuota);
           const subSummary = activeSub
-            ? `${activeSub.baseName} · 共 ${activeVariants.length} 档${activeQuota ? ' · ' + formatQuotaInlineText(activeQuota) : ''}`
+            ? `${activeSub.baseName} · ${activeVariants.length}档${resetInfo ? ' · ' + resetInfo : ''}`
             : `共 ${subModels.length} 个底层模型`;
+          const subTitle = activeSub
+            ? `${activeSub.baseName} · 共 ${activeVariants.length} 档${activeQuota ? ' · ' + formatQuotaInlineText(activeQuota) : ''}`
+            : subSummary;
 
           return `
             <div
@@ -4457,14 +4661,14 @@
                       <span class="effort-model-name">Orchestrator</span>
                       ${quotaChipsHtml}
                     </div>
-                    <div class="effort-model-sub">${escHtml(subSummary)}</div>
+                    <div class="effort-model-sub" title="${escHtml(subTitle)}">${escHtml(subSummary)}</div>
                   </div>
                 </div>
                 <div class="stage-actions">
-                  <button type="button" class="effort-back-btn" data-action="back-overview">← 返回周期表</button>
+                  <button type="button" class="effort-back-btn" data-action="back-overview">← 返回</button>
                 </div>
               </div>
-              <div class="orch-model-tabs" role="tablist" aria-label="Orchestrator 底层模型">${modelTabsHtml}</div>
+              <div class="orch-model-tabs" style="--orch-tab-cols:${orchTabCols}" role="tablist" aria-label="Orchestrator 底层模型">${modelTabsHtml}</div>
               <div class="effort-grid">${effortButtons}</div>
               <div class="effort-footer">
                 <span>←/→ 切底层模型 · 数字键 1-${activeVariants.length} 快选档位</span>
@@ -4510,7 +4714,7 @@
                 title="${escHtml(v.rawLabel)}${quotaBrief ? ' · ' + escHtml(quotaBrief) : ''}"
               >
                 <div class="effort-btn-top">
-                  <div>
+                  <div class="effort-btn-labels">
                     <span class="orch-tier-dot" style="--tier-color:${tierColor}"></span>
                     <span class="effort-name">${escHtml(tierName)}</span>
                   </div>
@@ -4543,7 +4747,7 @@
                 </div>
               </div>
               <div class="stage-actions">
-                <button type="button" class="effort-back-btn" data-action="back-overview">← 返回周期表</button>
+                <button type="button" class="effort-back-btn" data-action="back-overview">← 返回</button>
               </div>
             </div>
             <div class="effort-grid">${tierButtons}</div>
@@ -4577,14 +4781,16 @@
       const quotaChipsHtml = formatQuotaShortChips(quota);
       const sourceBadge = grp.source === 'api' ? `<span class="preview-badge released">API 接入</span>` : '';
       const hasAnyEffort = grp.variants.some((v) => !!v.effortMeta);
+      const resetInfo = formatQuotaResetSummary(quota);
       const subText =
         grp.variants.length > 1
           ? (hasAnyEffort
-              ? `请选择推理档位（原版共 ${grp.variants.length} 档${quota ? ' · ' + formatQuotaInlineText(quota) : ''}）`
-              : `请选择模型版本（共 ${grp.variants.length} 项）`)
+              ? `共 ${grp.variants.length} 档${resetInfo ? ' · ' + resetInfo : ' · 点选下方档位立即切换'}`
+              : `共 ${grp.variants.length} 项版本${resetInfo ? ' · ' + resetInfo : ''}`)
           : hasAnyEffort
-            ? `原版固定档位（${grp.variants[0].effortMeta.zh} / ${grp.variants[0].effortMeta.en}），点击立即切换`
-            : '单一版本（无推理档位），点击立即切换';
+            ? `固定档位（${grp.variants[0].effortMeta.zh}）${resetInfo ? ' · ' + resetInfo : ' · 点击立即切换'}`
+            : `单一版本${resetInfo ? ' · ' + resetInfo : ' · 点击立即切换'}`;
+      const subTitle = quota ? `${subText} · ${formatQuotaInlineText(quota)}` : subText;
 
       const effortButtons = grp.variants
         .map((v, idx) => {
@@ -4613,7 +4819,7 @@
               title="${escHtml(v.rawLabel)}${v.subtitle ? ' · ' + escHtml(v.subtitle) : ''}"
             >
               <div class="effort-btn-top">
-                <div>
+                <div class="effort-btn-labels">
                   <span class="effort-name">${escHtml(nameZh)}</span>
                   ${nameEn ? `<span class="effort-en">${escHtml(nameEn)}</span>` : ''}
                 </div>
@@ -4650,11 +4856,11 @@
                   ${quotaChipsHtml}
                   ${sourceBadge}
                 </div>
-                <div class="effort-model-sub">${escHtml(subText)}</div>
+                <div class="effort-model-sub" title="${escHtml(subTitle)}">${escHtml(subText)}</div>
               </div>
             </div>
             <div class="stage-actions">
-              <button type="button" class="effort-back-btn" data-action="back-overview">← 返回周期表</button>
+              <button type="button" class="effort-back-btn" data-action="back-overview">← 返回</button>
             </div>
           </div>
           <div class="effort-grid">${effortButtons}</div>
@@ -4699,7 +4905,7 @@
               title="虚拟槽位思考强度预览：${escHtml(proposedTitle)} (${escHtml(meta.en)})"
             >
               <div class="effort-btn-top">
-                <div>
+                <div class="effort-btn-labels">
                   <span class="effort-name">${escHtml(meta.zh)}</span>
                   ${meta.zh !== meta.en ? `<span class="effort-en">${escHtml(meta.en)}</span>` : ''}
                 </div>
@@ -4762,63 +4968,85 @@
       `
       : '';
 
-    let previewHtml = `<span style="opacity:0.78">点击彩色亮起元素格选择档位；边框长短表示剩余额度（满=全显，空=消失）</span>`;
+    let previewHtml = `<span class="preview-text" style="opacity:0.78">点击彩色亮起元素格选择档位；边框长短表示剩余额度（满=全显，空=消失）</span>`;
     const focusInfo = state.hoveredInfo;
     if (focusInfo) {
       if (focusInfo.type === 'released') {
+        const q = getQuotaForGroup(focusInfo.group);
+        const qText = formatQuotaCompactText(q);
+        const qFull = formatQuotaInlineText(q);
         const effortsText = focusInfo.group.variants
           .map((v) => (v.effortMeta ? v.effortMeta.zh : '标准'))
           .join(' / ');
-        const qText = formatQuotaInlineText(getQuotaForGroup(focusInfo.group));
+        const fullTitle = `${focusInfo.element.number} ${focusInfo.element.symbol} · ${focusInfo.group.baseName} · 档位：${effortsText}${qFull ? ' · ' + qFull : ''}`;
         previewHtml = `
           <span class="preview-badge released">${escHtml(focusInfo.group.colorLabel || '可用')}</span>
-          <span><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.group.baseName)} · 档位：${escHtml(effortsText)}${qText ? ' · ' + escHtml(qText) : ''}</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.group.baseName)} · ${focusInfo.group.variants.length}档${qText ? ' · ' + escHtml(qText) : ''}</span>
         `;
       } else if (focusInfo.type === 'unavailable') {
+        const fullTitle = `${focusInfo.element.number} ${focusInfo.element.symbol} · ${focusInfo.group.baseName}（当前账号不可用 / Unavailable）`;
         previewHtml = `
           <span class="preview-badge unavail">暂不可用</span>
-          <span><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.group.baseName)}（当前账号不可用 / Unavailable）</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.group.baseName)}（当前账号不可用）</span>
         `;
       } else if (focusInfo.type === 'gm') {
+        const q = getQuotaForGroup(focusInfo.group);
+        const qText = formatQuotaCompactText(q);
+        const qFull = formatQuotaInlineText(q);
         const effortsText = focusInfo.group.variants
           .map((v) => (v.effortMeta ? v.effortMeta.zh : '标准'))
           .join(' / ');
-        const qText = formatQuotaInlineText(getQuotaForGroup(focusInfo.group));
+        const fullTitle = `${focusInfo.group.baseName} · 档位：${effortsText}${qFull ? ' · ' + qFull : ''}`;
         previewHtml = `
           <span class="preview-badge released">经典模型</span>
-          <span><strong>${escHtml(focusInfo.group.baseName)}</strong> · 档位：${escHtml(effortsText)}${qText ? ' · ' + escHtml(qText) : ''}</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${escHtml(focusInfo.group.baseName)}</strong> · ${focusInfo.group.variants.length}档${qText ? ' · ' + escHtml(qText) : ''}</span>
         `;
       } else if (focusInfo.type === 'orchestrator') {
         const subList = Array.isArray(focusInfo.group.subModels) && focusInfo.group.subModels.length
           ? focusInfo.group.subModels
           : null;
         const tiersText = subList
-          ? subList.map((sm) => sm.shortName || sm.baseName).join(' / ')
-          : focusInfo.group.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel).join(' / ');
-        const qText = formatQuotaInlineText(getQuotaForGroup(focusInfo.group));
+          ? subList.map((sm) => sm.shortName || sm.baseName).join('/')
+          : focusInfo.group.variants.map((v) => v.orchestratorTier || v.tierLabel || v.rawLabel).join('/');
+        const q = getQuotaForGroup(focusInfo.group);
+        const qBrief = q
+          ? [
+              q.weekly && typeof q.weekly.pct === 'number' ? `周 ${q.weekly.pct}%` : '',
+              q.fiveHour && typeof q.fiveHour.pct === 'number' ? `5h ${q.fiveHour.pct}%` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : '';
+        const qFull = formatQuotaInlineText(q);
         const modeHint = focusInfo.group.hasEffort ? '含多档推理' : '直接切换';
+        const fullTitle = `Orchestrator · 底层模型：${tiersText}（${modeHint}）${qFull ? ' · ' + qFull : ''}`;
         previewHtml = `
           <span class="preview-badge released">编排模型</span>
-          <span><strong>Orchestrator</strong> · 底层模型：${escHtml(tiersText)}（${modeHint}）${qText ? ' · ' + escHtml(qText) : ''}</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>Orchestrator</strong> (${escHtml(tiersText)})${qBrief ? ' · ' + escHtml(qBrief) : ''}</span>
         `;
       } else if (focusInfo.type === 'other') {
+        const q = getQuotaForGroup(focusInfo.group);
+        const qText = formatQuotaCompactText(q);
+        const qFull = formatQuotaInlineText(q);
         const effortsText = focusInfo.group.variants
           .map((v) => (v.effortMeta ? v.effortMeta.zh : '标准'))
           .join(' / ');
-        const qText = formatQuotaInlineText(getQuotaForGroup(focusInfo.group));
+        const fullTitle = `${focusInfo.group.baseName} · 档位：${effortsText}${qFull ? ' · ' + qFull : ''}`;
         previewHtml = `
           <span class="preview-badge released">${escHtml(focusInfo.group.vendor)}</span>
-          <span><strong>${escHtml(focusInfo.group.baseName)}</strong> · 档位：${escHtml(effortsText)}${qText ? ' · ' + escHtml(qText) : ''}</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${escHtml(focusInfo.group.baseName)}</strong> · ${focusInfo.group.variants.length}档${qText ? ' · ' + escHtml(qText) : ''}</span>
         `;
       } else if (focusInfo.type === 'soon') {
+        const fullTitle = `${focusInfo.element.number} ${focusInfo.element.symbol} · ${focusInfo.soon.codename || focusInfo.element.en}（${focusInfo.soon.zhName || focusInfo.element.zh}） · 点击打开预留虚拟窗口`;
         previewHtml = `
           <span class="preview-badge soon">即将发布</span>
-          <span><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.soon.codename || focusInfo.element.en)}（${escHtml(focusInfo.soon.zhName || focusInfo.element.zh)}） · 点击打开预留虚拟窗口</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.soon.codename || focusInfo.element.en)}（${escHtml(focusInfo.element.zh)}）· 点击预览槽位</span>
         `;
       } else if (focusInfo.type === 'virtual') {
+        const fullTitle = `${focusInfo.element.number} ${focusInfo.element.symbol} · ${focusInfo.element.en}（${focusInfo.element.zh} · ${focusInfo.element.groupZh}） · 点击打开虚拟选择窗口`;
         previewHtml = `
           <span class="preview-badge virtual">虚拟槽位</span>
-          <span><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.element.en)}（${escHtml(focusInfo.element.zh)} · ${escHtml(focusInfo.element.groupZh)}） · 点击打开虚拟选择窗口</span>
+          <span class="preview-text" title="${escHtml(fullTitle)}"><strong>${focusInfo.element.number} ${escHtml(focusInfo.element.symbol)}</strong> · ${escHtml(focusInfo.element.en)}（${escHtml(focusInfo.element.zh)} · ${focusInfo.element.groupZh}）· 点击预览</span>
         `;
       }
     }
