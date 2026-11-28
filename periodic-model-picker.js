@@ -17,14 +17,17 @@
     hostName === '';
   if (!isAllowedOrigin) return;
 
-  const MODULE_VERSION = '3.3.2-20261123';
-  const MODULE_BUILD = 332;
+  const MODULE_VERSION = '3.4.0-20261127';
+  const MODULE_BUILD = 341;
   const HOST_ID = 'ag-periodic-model-picker-host';
   const CLOAK_STYLE_ID = 'ag-periodic-model-picker-cloak-style';
+  const HUD_HOST_ID = 'ag-pt-composer-hud';
+  const HUD_POPOVER_ID = 'ag-pt-composer-popover';
   const STORAGE_COMING_SOON_KEY = 'ag_periodic_picker_coming_soon_v2';
   const STORAGE_USAGE_CACHE_KEY = 'ag_periodic_picker_usage_cache_v31';
   const STORAGE_SUBMENU_EFFORTS_KEY = 'ag_periodic_picker_submenu_efforts_v3';
   const STORAGE_ORCHESTRATOR_SUBMENU_KEY = 'ag_periodic_picker_orch_submenu_v4';
+  const STORAGE_HUD_PREFS_KEY = 'ag_periodic_picker_hud_prefs_v1';
 
   // 清除 v3.0.0 可能误存的旧版用量缓存
   try {
@@ -187,6 +190,14 @@
       Ar: '#14b8a6',
       Kr: '#f59e0b',
     },
+    composerHud: {
+      enabled: true,
+      contextRing: true,
+      speedBadge: true,
+      quotaHalo: true,
+      quotaHaloMode: 'dual',
+      quotaHaloTone: 'semantic',
+    },
   };
 
   const userConfig =
@@ -230,6 +241,10 @@
     customAccents: {
       ...DEFAULT_CONFIG.customAccents,
       ...(userConfig.customAccents || {}),
+    },
+    composerHud: {
+      ...DEFAULT_CONFIG.composerHud,
+      ...(userConfig.composerHud && typeof userConfig.composerHud === 'object' ? userConfig.composerHud : {}),
     },
   };
 
@@ -5404,6 +5419,7 @@
 
     updateCenterStageOnly();
     requestAnimationFrame(() => syncQuotaSvgGeometry());
+    scheduleComposerHudSync(60);
   }
 
   function syncModalInteractiveState() {
@@ -5976,6 +5992,869 @@
   document.addEventListener('mousedown', onDocumentMouseOrFocusShield, true);
   document.addEventListener('focusin', onDocumentMouseOrFocusShield, true);
 
+  // ============================================================================
+  // Composer HUD: 输入框上下文圆环 + 生成速度徽章 + 双圈额度光环 + 紧凑详情浮窗
+  // ============================================================================
+  const DEFAULT_HUD_PREFS = {
+    enabled: CONFIG.composerHud?.enabled !== false,
+    contextRing: CONFIG.composerHud?.contextRing !== false,
+    speedBadge: CONFIG.composerHud?.speedBadge !== false,
+    quotaHalo: CONFIG.composerHud?.quotaHalo !== false,
+    quotaHaloMode: ['dual', 'auto', 'weekly', '5h', 'off'].includes(CONFIG.composerHud?.quotaHaloMode)
+      ? CONFIG.composerHud.quotaHaloMode
+      : 'dual',
+    quotaHaloTone: CONFIG.composerHud?.quotaHaloTone === 'accent' ? 'accent' : 'semantic',
+  };
+
+  function loadHudPrefs() {
+    const saved = safeLoadJson(STORAGE_HUD_PREFS_KEY, null);
+    if (!saved || typeof saved !== 'object') return { ...DEFAULT_HUD_PREFS };
+    return {
+      enabled: saved.enabled !== undefined ? !!saved.enabled : DEFAULT_HUD_PREFS.enabled,
+      contextRing: saved.contextRing !== undefined ? !!saved.contextRing : DEFAULT_HUD_PREFS.contextRing,
+      speedBadge: saved.speedBadge !== undefined ? !!saved.speedBadge : DEFAULT_HUD_PREFS.speedBadge,
+      quotaHalo: saved.quotaHalo !== undefined ? !!saved.quotaHalo : DEFAULT_HUD_PREFS.quotaHalo,
+      quotaHaloMode: ['dual', 'auto', 'weekly', '5h', 'off'].includes(saved.quotaHaloMode)
+        ? saved.quotaHaloMode
+        : DEFAULT_HUD_PREFS.quotaHaloMode,
+      quotaHaloTone: saved.quotaHaloTone === 'accent' ? 'accent' : DEFAULT_HUD_PREFS.quotaHaloTone,
+    };
+  }
+
+  let hudPrefs = loadHudPrefs();
+  const hudState = {
+    telemetry:
+      typeof window.__AGY_PT_TELEMETRY__ === 'object' && window.__AGY_PT_TELEMETRY__
+        ? window.__AGY_PT_TELEMETRY__
+        : null,
+    composerEl: null,
+    modelBtn: null,
+    haloEl: null,
+    hudHostEl: null,
+    hudShadow: null,
+    popoverHostEl: null,
+    popoverShadow: null,
+    popoverOpen: false,
+    syncTimer: null,
+    ttlTimer: null,
+    resizeObserver: null,
+    mutObserver: null,
+    lastHaloKey: '',
+    lastChipKey: '',
+    lastModelText: '',
+    streaming: {
+      active: false,
+      startedAtMs: 0,
+      baseChars: 0,
+      lastChars: 0,
+      liveTps: 0,
+      lastSampleMs: 0,
+      lastTelemetryTurnAtMs: 0,
+    },
+  };
+
+  function formatCompactTok(n) {
+    const num = Number(n || 0);
+    if (!Number.isFinite(num) || num <= 0) return '0';
+    if (num >= 1000000) return `${(num / 1000000).toFixed(2).replace(/\.?0+$/, '')}M`;
+    if (num >= 1000) return `${Math.round(num / 1000)}k`;
+    return String(Math.round(num));
+  }
+
+  function formatCompactBytes(b) {
+    const num = Number(b || 0);
+    if (!Number.isFinite(num) || num <= 0) return '0 B';
+    if (num >= 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+    if (num >= 1024) return `${(num / 1024).toFixed(1)} KB`;
+    return `${Math.round(num)} B`;
+  }
+
+  function formatCountdownSec(sec) {
+    const s = Math.max(0, Math.floor(sec || 0));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m > 0 ? `${m}m ${String(r).padStart(2, '0')}s` : `${r}s`;
+  }
+
+  function isElementVisibleForHud(el) {
+    if (!el || !(el instanceof Element) || !el.isConnected) return false;
+    try {
+      const st = getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 12 && r.height > 12;
+    } catch {
+      return false;
+    }
+  }
+
+  function locateActiveComposer() {
+    const btns = document.querySelectorAll('button, [role="button"], [role="combobox"]');
+    let best = null;
+    for (const btn of btns) {
+      if (!btn || !(btn instanceof Element)) continue;
+      if (btn.closest(`#${HOST_ID}, #${HUD_HOST_ID}, #${HUD_POPOVER_ID}`)) continue;
+      const foundBtn = findModelTriggerButton(btn);
+      if (!foundBtn || !isElementVisibleForHud(foundBtn)) continue;
+
+      let cur = foundBtn.parentElement;
+      let chosenContainer = null;
+      for (let depth = 0; depth < 9 && cur && cur !== document.body && cur !== document.documentElement; depth++) {
+        if (cur.closest(`#${HOST_ID}, #${HUD_HOST_ID}, #${HUD_POPOVER_ID}`)) break;
+        const hasInput = cur.querySelector('textarea, [contenteditable="true"], [role="textbox"]');
+        if (hasInput) {
+          const rect = cur.getBoundingClientRect();
+          if (rect.width >= 240 && rect.height >= 44 && rect.height <= 680) {
+            let hasChrome = false;
+            try {
+              const st = getComputedStyle(cur);
+              const rad = parseFloat(st.borderTopLeftRadius || '0');
+              const bw = parseFloat(st.borderTopWidth || '0');
+              hasChrome = rad >= 6 || bw > 0 || (st.backgroundColor && st.backgroundColor !== 'rgba(0, 0, 0, 0)' && st.backgroundColor !== 'transparent');
+            } catch {}
+            chosenContainer = cur;
+            if (hasChrome) break;
+          }
+        }
+        cur = cur.parentElement;
+      }
+
+      if (chosenContainer) {
+        const rect = chosenContainer.getBoundingClientRect();
+        const score = rect.top + (foundBtn.getBoundingClientRect().top || 0);
+        if (!best || score >= best.score) {
+          best = { composerEl: chosenContainer, modelBtn: foundBtn, score };
+        }
+      }
+    }
+    return best;
+  }
+
+  function resolveModelInfoForButton(modelBtn) {
+    if (!modelBtn) return { label: '', accent: '#4c8bf5', quota: null };
+    const aria = (modelBtn.getAttribute('aria-label') || '').trim();
+    const ariaMatch = aria.match(/(?:current|当前)\s*[:：]\s*(.+)$/i);
+    const rawLabel = ariaMatch
+      ? ariaMatch[1].trim()
+      : extractOptionLinesFromDom(modelBtn).join(' ').replace(/\s+/g, ' ').trim();
+    if (!rawLabel) return { label: '', accent: '#4c8bf5', quota: null };
+
+    const parsed = parseModelLabel(rawLabel);
+    const accent =
+      parsed.element?.accent ||
+      (parsed.isOrchestrator ? getOrchestratorSubModelAccent(parsed.orchestratorTier || parsed.baseName, parsed.vendor) : null) ||
+      '#4c8bf5';
+    const quota = getQuotaForTarget({
+      baseName: parsed.baseName || rawLabel,
+      vendor: parsed.vendor || 'Google',
+      isOrchestrator: !!parsed.isOrchestrator,
+      orchestratorTier: parsed.orchestratorTier || '',
+    });
+    return { label: parsed.baseName || rawLabel, accent, quota };
+  }
+
+  function removeComposerHalo() {
+    if (hudState.haloEl && hudState.haloEl.isConnected) {
+      hudState.haloEl.remove();
+    }
+    hudState.haloEl = null;
+    hudState.lastHaloKey = '';
+    if (hudState.composerEl && hudState.composerEl.getAttribute('data-agy-pt-pos-patched') === '1') {
+      hudState.composerEl.style.position = '';
+      hudState.composerEl.removeAttribute('data-agy-pt-pos-patched');
+    }
+  }
+
+  function syncComposerQuotaHalo(composerEl, modelBtn) {
+    if (!hudPrefs.enabled || !hudPrefs.quotaHalo || hudPrefs.quotaHaloMode === 'off' || !composerEl || !composerEl.isConnected) {
+      removeComposerHalo();
+      return;
+    }
+
+    const info = resolveModelInfoForButton(modelBtn);
+    const quota = info.quota;
+    if (!quota) {
+      removeComposerHalo();
+      return;
+    }
+
+    const hasWeekly = quota.weekly && typeof quota.weekly.pct === 'number';
+    const has5h = quota.fiveHour && typeof quota.fiveHour.pct === 'number';
+    if (!hasWeekly && !has5h) {
+      removeComposerHalo();
+      return;
+    }
+
+    let outerPct = null;
+    let outerColor = '';
+    let innerPct = null;
+    let innerColor = '';
+
+    const mode = hudPrefs.quotaHaloMode;
+    const useAccent = hudPrefs.quotaHaloTone === 'accent';
+    const wCol = (p) => (useAccent ? info.accent : getWeeklyStrokeColor(p));
+    const hCol = (p) => (useAccent ? hexToRgba(info.accent, 0.85) : getFiveHourStrokeColor(p));
+
+    if (mode === 'dual') {
+      if (hasWeekly && has5h) {
+        outerPct = quota.weekly.pct;
+        outerColor = wCol(outerPct);
+        innerPct = quota.fiveHour.pct;
+        innerColor = hCol(innerPct);
+      } else if (hasWeekly) {
+        outerPct = quota.weekly.pct;
+        outerColor = wCol(outerPct);
+      } else {
+        outerPct = quota.fiveHour.pct;
+        outerColor = hCol(outerPct);
+      }
+    } else if (mode === 'weekly') {
+      const p = hasWeekly ? quota.weekly.pct : quota.fiveHour.pct;
+      outerPct = p;
+      outerColor = hasWeekly ? wCol(p) : hCol(p);
+    } else if (mode === '5h') {
+      const p = has5h ? quota.fiveHour.pct : quota.weekly.pct;
+      outerPct = p;
+      outerColor = has5h ? hCol(p) : wCol(p);
+    } else {
+      // auto: pick lower remaining pool
+      if (hasWeekly && has5h) {
+        const pick5h = quota.fiveHour.pct < quota.weekly.pct;
+        outerPct = pick5h ? quota.fiveHour.pct : quota.weekly.pct;
+        outerColor = pick5h ? hCol(outerPct) : wCol(outerPct);
+      } else if (hasWeekly) {
+        outerPct = quota.weekly.pct;
+        outerColor = wCol(outerPct);
+      } else {
+        outerPct = quota.fiveHour.pct;
+        outerColor = hCol(outerPct);
+      }
+    }
+
+    const rect = composerEl.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w < 80 || h < 36) return;
+
+    let rad = 12;
+    try {
+      const st = getComputedStyle(composerEl);
+      if (st.position === 'static') {
+        composerEl.style.position = 'relative';
+        composerEl.setAttribute('data-agy-pt-pos-patched', '1');
+      }
+      const parsedRad = parseFloat(st.borderTopLeftRadius || '12');
+      if (Number.isFinite(parsedRad) && parsedRad > 0) rad = parsedRad;
+    } catch {}
+
+    const haloKey = `${w}x${h}:${rad}:${outerPct}:${outerColor}:${innerPct ?? ''}:${innerColor}`;
+    if (hudState.haloEl && hudState.haloEl.parentElement === composerEl && hudState.lastHaloKey === haloKey) {
+      return;
+    }
+
+    let halo = hudState.haloEl;
+    if (!halo || halo.parentElement !== composerEl) {
+      removeComposerHalo();
+      halo = document.createElement('div');
+      halo.setAttribute('data-agy-pt-halo', '1');
+      halo.setAttribute('aria-hidden', 'true');
+      halo.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;z-index:2;border-radius:inherit;overflow:hidden;';
+      composerEl.appendChild(halo);
+      hudState.haloEl = halo;
+    }
+
+    const outerW = 1.9;
+    const innerW = 1.5;
+    const padOuter = outerW / 2 + 0.6;
+    const padInner = padOuter + outerW / 2 + innerW / 2 + 1.6;
+    const outerPath = buildClockwiseRoundedRectPath(
+      padOuter,
+      padOuter,
+      Math.max(8, w - padOuter * 2),
+      Math.max(8, h - padOuter * 2),
+      Math.max(2, rad - padOuter * 0.5)
+    );
+    const outerDash = outerPct >= 100 ? '100 0' : `${Math.max(0, outerPct)} ${Math.max(0, 100 - outerPct)}`;
+    let innerSvg = '';
+    if (innerPct !== null) {
+      const innerPath = buildClockwiseRoundedRectPath(
+        padInner,
+        padInner,
+        Math.max(8, w - padInner * 2),
+        Math.max(8, h - padInner * 2),
+        Math.max(1.5, rad - padInner * 0.7)
+      );
+      const innerDash = innerPct >= 100 ? '100 0' : `${Math.max(0, innerPct)} ${Math.max(0, 100 - innerPct)}`;
+      if (innerPct > 0) {
+        innerSvg = `<path d="${innerPath}" pathLength="100" fill="none" stroke="${innerColor}" stroke-opacity="0.88" stroke-width="${innerW}" stroke-linecap="round" stroke-dasharray="${innerDash}" />`;
+      }
+    }
+    const outerSvg =
+      outerPct > 0
+        ? `<path d="${outerPath}" pathLength="100" fill="none" stroke="${outerColor}" stroke-opacity="0.92" stroke-width="${outerW}" stroke-linecap="round" stroke-dasharray="${outerDash}" />`
+        : '';
+
+    halo.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;width:100%;height:100%;pointer-events:none;">${outerSvg}${innerSvg}</svg>`;
+    hudState.lastHaloKey = haloKey;
+  }
+
+  function computeEffectiveCacheView(tel) {
+    if (!tel || !tel.currentContextTokens) {
+      return {
+        idleSec: null,
+        ttlLeftSec: 0,
+        ttlPct: 0,
+        temp: 'cold',
+        advice: 'none',
+      };
+    }
+    const ttlSec = Number(tel.ttlSec || 300);
+    const lastTurnMs = Number(tel.lastTurnAtMs || 0);
+    const idleSec = lastTurnMs > 0 ? Math.max(0, Math.floor((Date.now() - lastTurnMs) / 1000)) : Number(tel.idleSec ?? 0);
+    let temp = 'cold';
+    if (tel.currentContextTokens >= 4000) {
+      if (idleSec < 60) temp = 'hot';
+      else if (idleSec < ttlSec) temp = 'warm';
+    }
+    const ttlLeftSec = temp === 'cold' ? 0 : Math.max(0, ttlSec - idleSec);
+    const ttlPct = ttlSec > 0 ? Math.min(100, Math.round((ttlLeftSec / ttlSec) * 100)) : 0;
+
+    let advice = 'none';
+    if (tel.currentContextTokens >= (tel.criticalTokens || 160000)) {
+      advice = 'critical_compact';
+    } else if (temp === 'cold' && tel.currentContextTokens >= (tel.coldCompactTokens || 60000)) {
+      advice = 'opportunistic_cold_compact';
+    } else if (temp !== 'cold' && (tel.weightedHitRate || 0) >= 0.85 && tel.currentContextTokens >= Math.round((tel.windowTokens || 200000) * 0.15)) {
+      advice = 'delay_hot_cache';
+    }
+
+    return { idleSec, ttlLeftSec, ttlPct, temp, advice };
+  }
+
+  function sampleStreamingSpeed() {
+    const now = Date.now();
+    const composer = hudState.composerEl;
+    let stopVisible = false;
+    if (composer && composer.isConnected) {
+      const stopBtn = composer.querySelector(
+        'button[aria-label*="Stop" i], button[title*="Stop" i], button[aria-label*="停止"], button[title*="停止"], button[aria-label*="Cancel" i]'
+      );
+      if (stopBtn && isElementVisibleForHud(stopBtn)) stopVisible = true;
+    }
+
+    const responses = document.querySelectorAll('[aria-label="Agent response"], [aria-label="智能体回复"]');
+    const lastResp = responses.length ? responses[responses.length - 1] : null;
+    const len = lastResp ? (lastResp.textContent || '').length : 0;
+
+    const telTurnAt = Number(hudState.telemetry?.lastTurnAtMs || 0);
+    if (telTurnAt > hudState.streaming.lastTelemetryTurnAtMs) {
+      hudState.streaming.lastTelemetryTurnAtMs = telTurnAt;
+      hudState.streaming.active = false;
+      hudState.streaming.liveTps = 0;
+      hudState.streaming.startedAtMs = 0;
+      hudState.streaming.baseChars = len;
+      hudState.streaming.lastChars = len;
+      return;
+    }
+
+    if (stopVisible || (len > hudState.streaming.lastChars && hudState.streaming.lastChars > 0)) {
+      if (!hudState.streaming.active) {
+        hudState.streaming.active = true;
+        hudState.streaming.startedAtMs = now;
+        hudState.streaming.baseChars = Math.max(0, len - 20);
+      }
+      const elapsedSec = Math.max(0.5, (now - hudState.streaming.startedAtMs) / 1000);
+      const deltaChars = Math.max(0, len - hudState.streaming.baseChars);
+      if (deltaChars >= 12) {
+        hudState.streaming.liveTps = Math.round(((deltaChars / 3.4) / elapsedSec) * 10) / 10;
+      }
+      hudState.streaming.lastSampleMs = now;
+    } else if (hudState.streaming.active && now - hudState.streaming.lastSampleMs > 2500) {
+      hudState.streaming.active = false;
+    }
+    hudState.streaming.lastChars = len;
+  }
+
+  function renderHudChips() {
+    if (!hudState.hudShadow || !hudState.hudHostEl || !hudState.hudHostEl.isConnected) return;
+    const tel = hudState.telemetry;
+    const light = detectLightTheme();
+    const showRing = hudPrefs.enabled && hudPrefs.contextRing;
+    const showSpeed = hudPrefs.enabled && hudPrefs.speedBadge;
+
+    if (!showRing && !showSpeed) {
+      hudState.hudHostEl.style.display = 'none';
+      return;
+    }
+    hudState.hudHostEl.style.display = 'inline-flex';
+
+    const usedPct = tel && tel.turns > 0 ? Math.min(100, Math.max(0, Number(tel.usedPct || 0))) : 0;
+    const ringColor =
+      tel?.watermark === 'critical' ? '#ef4444' : tel?.watermark === 'warn' ? '#f59e0b' : '#34d399';
+    const cacheInfo = computeEffectiveCacheView(tel);
+    const tempDotColor =
+      cacheInfo.temp === 'hot' ? '#34d399' : cacheInfo.temp === 'warm' ? '#f59e0b' : '#64748b';
+
+    const ctxLabel = tel && tel.turns > 0 ? `${Math.round(usedPct)}%` : '--';
+    const isLive = hudState.streaming.active && hudState.streaming.liveTps > 0;
+    const displayTps = isLive ? hudState.streaming.liveTps : Number(tel?.lastTps || 0);
+    const speedLabel = displayTps > 0 ? `${isLive ? '~' : ''}${Math.round(displayTps)} t/s` : '--';
+
+    const key = `${light ? 'L' : 'D'}|${showRing}|${showSpeed}|${ctxLabel}|${ringColor}|${tempDotColor}|${speedLabel}|${isLive}|${hudState.popoverOpen}`;
+    if (key === hudState.lastChipKey) return;
+    hudState.lastChipKey = key;
+
+    const r = 5.4;
+    const circ = 2 * Math.PI * r;
+    const dash = ((usedPct / 100) * circ).toFixed(2);
+    const gap = Math.max(0, circ - Number(dash)).toFixed(2);
+    const trackStroke = light ? 'rgba(15,23,42,0.14)' : 'rgba(255,255,255,0.14)';
+    const chipBg = light ? 'rgba(15,23,42,0.05)' : 'rgba(255,255,255,0.06)';
+    const chipHover = light ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.12)';
+    const chipBorder = light ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.1)';
+    const txtColor = light ? '#1e293b' : '#e2e8f0';
+    const mutedColor = light ? '#64748b' : '#94a3b8';
+
+    hudState.hudShadow.innerHTML = `
+      <style>
+        :host { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .chip {
+          display: inline-flex; align-items: center; gap: 4px;
+          height: 22px; padding: 0 7px; border-radius: 999px;
+          border: 1px solid ${chipBorder}; background: ${chipBg};
+          color: ${txtColor}; font-size: 11px; font-weight: 500; line-height: 1;
+          cursor: pointer; user-select: none; transition: background 0.15s ease, border-color 0.15s ease;
+          white-space: nowrap;
+        }
+        .chip:hover { background: ${chipHover}; }
+        .chip.is-open { border-color: #38bdf8; }
+        .temp-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+        .speed-ico { color: ${isLive ? '#38bdf8' : mutedColor}; font-size: 10px; line-height: 1; }
+        .pulse { animation: agyPtPulse 1.1s ease-in-out infinite; }
+        @keyframes agyPtPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+      </style>
+      ${
+        showRing
+          ? `<button type="button" class="chip ${hudState.popoverOpen ? 'is-open' : ''}" data-hud-act="toggle" title="上下文水位 & 缓存状态 (点击展开)">
+              <svg width="14" height="14" viewBox="0 0 14 14" style="display:block;flex-shrink:0;">
+                <circle cx="7" cy="7" r="${r}" fill="none" stroke="${trackStroke}" stroke-width="1.8" />
+                <circle cx="7" cy="7" r="${r}" fill="none" stroke="${ringColor}" stroke-width="1.8" stroke-linecap="round"
+                  stroke-dasharray="${dash} ${gap}" transform="rotate(-90 7 7)" />
+              </svg>
+              <span>${escHtml(ctxLabel)}</span>
+              <span class="temp-dot" style="background:${tempDotColor};"></span>
+            </button>`
+          : ''
+      }
+      ${
+        showSpeed
+          ? `<button type="button" class="chip ${hudState.popoverOpen ? 'is-open' : ''}" data-hud-act="toggle" title="生成速度 tok/s (点击展开)">
+              <span class="speed-ico ${isLive ? 'pulse' : ''}">⚡</span>
+              <span>${escHtml(speedLabel)}</span>
+            </button>`
+          : ''
+      }
+    `;
+  }
+
+  function renderHudPopover() {
+    if (!hudState.popoverOpen) {
+      if (hudState.popoverHostEl && hudState.popoverHostEl.isConnected) {
+        hudState.popoverHostEl.style.display = 'none';
+      }
+      return;
+    }
+
+    if (!hudState.popoverHostEl || !hudState.popoverHostEl.isConnected) {
+      const pop = document.createElement('div');
+      pop.id = HUD_POPOVER_ID;
+      pop.style.cssText = 'position:fixed;z-index:2147483645;';
+      document.body.appendChild(pop);
+      hudState.popoverHostEl = pop;
+      hudState.popoverShadow = pop.attachShadow({ mode: 'open' });
+      hudState.popoverShadow.addEventListener('click', (e) => {
+        const target = e.target instanceof Element ? e.target.closest('[data-pop-act]') : null;
+        if (!target) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const act = target.getAttribute('data-pop-act');
+        if (act === 'close') {
+          hudState.popoverOpen = false;
+          renderHudPopover();
+          renderHudChips();
+        } else if (act === 'toggle-ring') {
+          setHudPrefs({ contextRing: !hudPrefs.contextRing });
+        } else if (act === 'toggle-speed') {
+          setHudPrefs({ speedBadge: !hudPrefs.speedBadge });
+        } else if (act === 'halo-mode') {
+          const val = target.getAttribute('data-val');
+          if (val) setHudPrefs({ quotaHalo: val !== 'off', quotaHaloMode: val });
+        } else if (act === 'halo-tone') {
+          setHudPrefs({ quotaHaloTone: hudPrefs.quotaHaloTone === 'semantic' ? 'accent' : 'semantic' });
+        } else if (act === 'refresh-usage') {
+          if (state.open && state.nativeMenuEl && state.nativeMenuEl.isConnected) {
+            probeUsageAndSubmenusInBackground(true);
+          } else if (hudState.modelBtn && hudState.modelBtn.isConnected) {
+            hudState.popoverOpen = false;
+            renderHudPopover();
+            dispatchRealClick(hudState.modelBtn);
+          }
+        }
+      });
+    }
+
+    const popHost = hudState.popoverHostEl;
+    popHost.style.display = 'block';
+    const anchor = hudState.hudHostEl?.getBoundingClientRect() || hudState.modelBtn?.getBoundingClientRect();
+    const popW = 304;
+    if (anchor) {
+      const left = Math.max(10, Math.min(window.innerWidth - popW - 10, anchor.left));
+      const bottom = Math.max(12, window.innerHeight - anchor.top + 8);
+      popHost.style.left = `${Math.round(left)}px`;
+      popHost.style.bottom = `${Math.round(bottom)}px`;
+      popHost.style.top = 'auto';
+    } else {
+      popHost.style.right = '24px';
+      popHost.style.bottom = '96px';
+      popHost.style.left = 'auto';
+    }
+
+    const light = detectLightTheme();
+    const tel = hudState.telemetry;
+    const cacheInfo = computeEffectiveCacheView(tel);
+    const modelInfo = resolveModelInfoForButton(hudState.modelBtn);
+    const quota = modelInfo.quota;
+    const usedPct = tel && tel.turns > 0 ? Math.min(100, Math.max(0, Number(tel.usedPct || 0))) : 0;
+    const ctxText = tel && tel.turns > 0
+      ? `${formatCompactTok(tel.currentContextTokens)} / ${formatCompactTok(tel.windowTokens)} (${usedPct.toFixed(1)}%)`
+      : '暂无本会话日志数据';
+    const hitRatePct = tel && tel.turns > 0 ? `${(Number(tel.weightedHitRate || 0) * 100).toFixed(1)}%` : '--';
+
+    const tempMap = {
+      hot: { label: 'HOT 热缓存', color: '#34d399' },
+      warm: { label: 'WARM 温缓存', color: '#f59e0b' },
+      cold: { label: 'COLD 已冷却', color: '#94a3b8' },
+    };
+    const tempMeta = tempMap[cacheInfo.temp] || tempMap.cold;
+    const ttlText = cacheInfo.temp === 'cold' ? '已过期 (可安全压缩)' : `剩余 ${formatCountdownSec(cacheInfo.ttlLeftSec)}`;
+
+    let adviceText = '水位健康，继续保持即可。';
+    if (cacheInfo.advice === 'critical_compact') {
+      adviceText = '已接近窗口红线，建议做完本步后 /compact。';
+    } else if (cacheInfo.advice === 'opportunistic_cold_compact') {
+      adviceText = '缓存已冷却且占用 ≥30%，现在 /compact 最划算。';
+    } else if (cacheInfo.advice === 'delay_hot_cache') {
+      adviceText = '热缓存命中率高，建议暂缓 /compact。';
+    }
+
+    const weeklyStr = quota?.weekly ? `${quota.weekly.pct}%${quota.weekly.resetText ? ` (${quota.weekly.resetText})` : ''}` : '--';
+    const fiveHStr = quota?.fiveHour ? `${quota.fiveHour.pct}%${quota.fiveHour.resetText ? ` (${quota.fiveHour.resetText})` : ''}` : '--';
+    const dart = tel?.dartStats;
+    const dartStr = dart?.available
+      ? `拦截/去重 ${dart.totalEvents} 次 · 省流 ${formatCompactBytes(dart.savedBytes)}`
+      : '等待下次工具调用记账';
+
+    const bg = light ? 'rgba(255,255,255,0.96)' : 'rgba(18,22,30,0.96)';
+    const border = light ? 'rgba(15,23,42,0.14)' : 'rgba(255,255,255,0.14)';
+    const cardBg = light ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.045)';
+    const text = light ? '#0f172a' : '#f1f5f9';
+    const muted = light ? '#64748b' : '#94a3b8';
+    const barTrack = light ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.1)';
+    const ctxBarColor = tel?.watermark === 'critical' ? '#ef4444' : tel?.watermark === 'warn' ? '#f59e0b' : '#34d399';
+
+    const modeOptions = [
+      { id: 'dual', label: '双圈' },
+      { id: 'auto', label: '低池' },
+      { id: 'weekly', label: '周' },
+      { id: '5h', label: '5h' },
+      { id: 'off', label: '关' },
+    ];
+
+    hudState.popoverShadow.innerHTML = `
+      <style>
+        :host { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .card {
+          width: ${popW}px; padding: 12px; border-radius: 12px;
+          background: ${bg}; border: 1px solid ${border}; color: ${text};
+          box-shadow: 0 14px 36px rgba(0,0,0,0.32); backdrop-filter: blur(16px);
+          font-size: 12px; line-height: 1.45; box-sizing: border-box;
+        }
+        .hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .title { font-weight:700; font-size:12.5px; display:flex; align-items:center; gap:6px; }
+        .badge { font-size:10px; padding:1px 6px; border-radius:999px; background:${cardBg}; color:${muted}; border:1px solid ${border}; }
+        .close { background:none; border:none; color:${muted}; cursor:pointer; font-size:14px; padding:2px 5px; border-radius:6px; }
+        .close:hover { background:${cardBg}; color:${text}; }
+        .sec { background:${cardBg}; border-radius:8px; padding:8px 9px; margin-bottom:7px; }
+        .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .lbl { color:${muted}; font-size:11px; }
+        .val { font-weight:600; font-size:11.5px; }
+        .bar { height:5px; border-radius:99px; background:${barTrack}; overflow:hidden; margin-top:5px; position:relative; }
+        .fill { height:100%; border-radius:99px; transition:width 0.25s ease; }
+        .hint { font-size:10.5px; color:${muted}; margin-top:4px; }
+        .toggles { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+        .btn {
+          border:1px solid ${border}; background:transparent; color:${muted};
+          border-radius:6px; padding:2px 7px; font-size:10.5px; cursor:pointer;
+        }
+        .btn.on { background:rgba(56,189,248,0.16); border-color:#38bdf8; color:${text}; font-weight:600; }
+      </style>
+      <div class="card">
+        <div class="hdr">
+          <div class="title">AGY-PT 实时监控 <span class="badge">${escHtml(modelInfo.label || tel?.model || '未识别')}</span></div>
+          <button type="button" class="close" data-pop-act="close" title="关闭">✕</button>
+        </div>
+
+        <div class="sec">
+          <div class="row"><span class="lbl">上下文占用</span><span class="val">${escHtml(ctxText)}</span></div>
+          <div class="bar"><div class="fill" style="width:${usedPct}%;background:${ctxBarColor};"></div></div>
+          <div class="row" style="margin-top:6px;">
+            <span class="lbl">缓存命中 <strong style="color:${text}">${escHtml(hitRatePct)}</strong></span>
+            <span class="val" style="color:${tempMeta.color}">${escHtml(tempMeta.label)} · ${escHtml(ttlText)}</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:${cacheInfo.ttlPct}%;background:${tempMeta.color};"></div></div>
+          <div class="hint">${escHtml(adviceText)}</div>
+        </div>
+
+        <div class="sec">
+          <div class="row">
+            <span class="lbl">生成速度 (上轮 / 均速)</span>
+            <span class="val">${tel?.lastTps ? `${tel.lastTps} / ${tel.avgTps} tok/s` : '--'}</span>
+          </div>
+          <div class="hint">上轮输出 ${tel?.lastOutputTokens || 0} tok (${tel?.lastDurationSec || 0}s) · 本会话共 ${tel?.turns || 0} 轮</div>
+        </div>
+
+        <div class="sec">
+          <div class="row">
+            <span class="lbl">模型额度 (周 / 5h)</span>
+            <button type="button" class="btn" data-pop-act="refresh-usage">刷新额度</button>
+          </div>
+          <div class="hint">周额度: ${escHtml(weeklyStr)} · 5h: ${escHtml(fiveHStr)}</div>
+          <div class="hint">AGY-Dart: ${escHtml(dartStr)}</div>
+        </div>
+
+        <div class="sec" style="margin-bottom:0;">
+          <div class="row">
+            <span class="lbl">输入框显示项</span>
+            <span class="toggles" style="margin-top:0;">
+              <button type="button" class="btn ${hudPrefs.contextRing ? 'on' : ''}" data-pop-act="toggle-ring">上下文</button>
+              <button type="button" class="btn ${hudPrefs.speedBadge ? 'on' : ''}" data-pop-act="toggle-speed">速度</button>
+              <button type="button" class="btn ${hudPrefs.quotaHaloTone === 'accent' ? 'on' : ''}" data-pop-act="halo-tone">${hudPrefs.quotaHaloTone === 'accent' ? '元素色' : '语义色'}</button>
+            </span>
+          </div>
+          <div class="toggles">
+            <span class="lbl" style="align-self:center;margin-right:2px;">光环:</span>
+            ${modeOptions
+              .map(
+                (m) =>
+                  `<button type="button" class="btn ${
+                    (hudPrefs.quotaHalo ? hudPrefs.quotaHaloMode : 'off') === m.id ? 'on' : ''
+                  }" data-pop-act="halo-mode" data-val="${m.id}">${m.label}</button>`
+              )
+              .join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function findHorizontalHudAnchor(modelBtn, composerEl) {
+    if (!modelBtn) return { parentEl: null, anchorEl: null };
+    let anchor = modelBtn;
+    let parent = modelBtn.parentElement;
+    let fallbackSpaceBetween = null;
+
+    for (let depth = 0; depth < 7 && parent && parent !== document.body && parent !== document.documentElement; depth++) {
+      try {
+        const cs = getComputedStyle(parent);
+        const display = String(cs.display || '');
+        const flexDir = String(cs.flexDirection || '');
+        const justify = String(cs.justifyContent || '');
+        const isRowFlex =
+          (display === 'flex' || display === 'inline-flex') &&
+          (flexDir === 'row' || flexDir === 'row-reverse' || flexDir === '');
+        if (isRowFlex) {
+          const isDistributed = justify === 'space-between' || justify === 'space-around' || justify === 'space-evenly';
+          if (!isDistributed) {
+            return { parentEl: parent, anchorEl: anchor };
+          }
+          if (!fallbackSpaceBetween) {
+            fallbackSpaceBetween = { parentEl: parent, anchorEl: anchor };
+          }
+        }
+      } catch {}
+      if (parent === composerEl) break;
+      anchor = parent;
+      parent = parent.parentElement;
+    }
+
+    return fallbackSpaceBetween || { parentEl: modelBtn.parentElement, anchorEl: modelBtn };
+  }
+
+  function syncComposerHudNow() {
+    const located = locateActiveComposer();
+    if (!located) return;
+
+    const { composerEl, modelBtn } = located;
+    if (hudState.composerEl !== composerEl) {
+      if (hudState.resizeObserver && hudState.composerEl) {
+        try {
+          hudState.resizeObserver.unobserve(hudState.composerEl);
+        } catch {}
+      }
+      removeComposerHalo();
+      hudState.composerEl = composerEl;
+      if (typeof ResizeObserver === 'function') {
+        if (!hudState.resizeObserver) {
+          hudState.resizeObserver = new ResizeObserver(() => {
+            syncComposerQuotaHalo(hudState.composerEl, hudState.modelBtn);
+          });
+        }
+        try {
+          hudState.resizeObserver.observe(composerEl);
+        } catch {}
+      }
+    }
+    hudState.modelBtn = modelBtn;
+
+    const stray = typeof document.getElementById === 'function' ? document.getElementById(HUD_HOST_ID) : null;
+    if (stray && stray !== hudState.hudHostEl) {
+      stray.remove();
+    }
+
+    const mountTarget = findHorizontalHudAnchor(modelBtn, composerEl);
+    const parent = mountTarget?.parentEl || null;
+    const anchorEl = mountTarget?.anchorEl || modelBtn;
+
+    if (parent && anchorEl) {
+      if (!hudState.hudHostEl || !hudState.hudShadow) {
+        const host = document.createElement('span');
+        host.id = HUD_HOST_ID;
+        host.setAttribute('data-agy-pt-hud', '1');
+        host.style.cssText =
+          'display:inline-flex;align-items:center;margin-left:2px;flex-shrink:0;white-space:nowrap;align-self:center;';
+        anchorEl.insertAdjacentElement('afterend', host);
+        hudState.hudHostEl = host;
+        hudState.hudShadow = host.attachShadow({ mode: 'open' });
+        hudState.lastChipKey = '';
+        hudState.hudShadow.addEventListener('click', (e) => {
+          const btn = e.target instanceof Element ? e.target.closest('[data-hud-act]') : null;
+          if (!btn) return;
+          e.preventDefault();
+          e.stopPropagation();
+          hudState.popoverOpen = !hudState.popoverOpen;
+          renderHudChips();
+          renderHudPopover();
+        });
+      } else if (
+        !hudState.hudHostEl.isConnected ||
+        hudState.hudHostEl.parentElement !== parent ||
+        (hudState.hudHostEl.previousElementSibling !== undefined && hudState.hudHostEl.previousElementSibling !== anchorEl)
+      ) {
+        anchorEl.insertAdjacentElement('afterend', hudState.hudHostEl);
+      }
+    }
+
+    sampleStreamingSpeed();
+    syncComposerQuotaHalo(composerEl, modelBtn);
+    renderHudChips();
+    if (hudState.popoverOpen) renderHudPopover();
+  }
+
+  function scheduleComposerHudSync(delayMs = 180) {
+    if (hudState.syncTimer) clearTimeout(hudState.syncTimer);
+    hudState.syncTimer = setTimeout(() => {
+      hudState.syncTimer = null;
+      syncComposerHudNow();
+    }, delayMs);
+  }
+
+  function setHudPrefs(patch) {
+    if (!patch || typeof patch !== 'object') return hudPrefs;
+    hudPrefs = {
+      ...hudPrefs,
+      ...patch,
+    };
+    safeSaveJson(STORAGE_HUD_PREFS_KEY, hudPrefs);
+    hudState.lastHaloKey = '';
+    hudState.lastChipKey = '';
+    syncComposerHudNow();
+    return hudPrefs;
+  }
+
+  function onTelemetryUpdateEvent(e) {
+    const detail = e && e.detail ? e.detail : window.__AGY_PT_TELEMETRY__;
+    if (detail && typeof detail === 'object') {
+      hudState.telemetry = detail;
+      hudState.lastChipKey = '';
+      syncComposerHudNow();
+    }
+  }
+
+  function onDocumentOutsideHudPopover(e) {
+    if (!hudState.popoverOpen) return;
+    const t = e.target;
+    if (t instanceof Element && (t.closest(`#${HUD_POPOVER_ID}`) || t.closest(`#${HUD_HOST_ID}`))) return;
+    hudState.popoverOpen = false;
+    renderHudPopover();
+    renderHudChips();
+  }
+
+  window.addEventListener('agy-pt-telemetry', onTelemetryUpdateEvent);
+  document.addEventListener('pointerdown', onDocumentOutsideHudPopover, true);
+
+  if (typeof MutationObserver === 'function') {
+    hudState.mutObserver = new MutationObserver(() => {
+      scheduleComposerHudSync(250);
+    });
+    try {
+      hudState.mutObserver.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    } catch {}
+  }
+
+  hudState.ttlTimer = setInterval(() => {
+    if (hudState.popoverOpen) {
+      renderHudPopover();
+    } else if (hudState.telemetry) {
+      renderHudChips();
+    }
+  }, 1000);
+
+  scheduleComposerHudSync(120);
+
+  function destroyComposerHud() {
+    if (hudState.syncTimer) clearTimeout(hudState.syncTimer);
+    if (hudState.ttlTimer) clearInterval(hudState.ttlTimer);
+    hudState.syncTimer = null;
+    hudState.ttlTimer = null;
+    if (hudState.resizeObserver) {
+      try {
+        hudState.resizeObserver.disconnect();
+      } catch {}
+      hudState.resizeObserver = null;
+    }
+    if (hudState.mutObserver) {
+      try {
+        hudState.mutObserver.disconnect();
+      } catch {}
+      hudState.mutObserver = null;
+    }
+    window.removeEventListener('agy-pt-telemetry', onTelemetryUpdateEvent);
+    document.removeEventListener('pointerdown', onDocumentOutsideHudPopover, true);
+    removeComposerHalo();
+    if (hudState.hudHostEl && hudState.hudHostEl.isConnected) hudState.hudHostEl.remove();
+    if (hudState.popoverHostEl && hudState.popoverHostEl.isConnected) hudState.popoverHostEl.remove();
+    hudState.hudHostEl = null;
+    hudState.hudShadow = null;
+    hudState.popoverHostEl = null;
+    hudState.popoverShadow = null;
+    hudState.composerEl = null;
+    hudState.modelBtn = null;
+  }
+
   // 对外预留标准接口
   const publicApi = {
     version: MODULE_VERSION,
@@ -6142,11 +7021,36 @@
       buildModelGroups(state.lastNativeModelItems, state.lastNativeActionItems, state.triggerBtn);
       mountModalSkeleton();
     },
+
+    getHudState() {
+      return {
+        prefs: { ...hudPrefs },
+        telemetry: hudState.telemetry ? { ...hudState.telemetry } : null,
+        hasComposer: Boolean(hudState.composerEl && hudState.composerEl.isConnected),
+        hasHalo: Boolean(hudState.haloEl && hudState.haloEl.isConnected),
+        hasWidgets: Boolean(hudState.hudHostEl && hudState.hudHostEl.isConnected),
+        popoverOpen: !!hudState.popoverOpen,
+      };
+    },
+
+    setHudPrefs(patch) {
+      return setHudPrefs(patch);
+    },
+
+    updateTelemetry(data) {
+      if (data && typeof data === 'object') {
+        hudState.telemetry = data;
+        hudState.lastChipKey = '';
+        syncComposerHudNow();
+      }
+      return hudState.telemetry;
+    },
   };
 
   window.__ANTIGRAVITY_PERIODIC_API__ = publicApi;
 
   const periodicCleanup = () => {
+    destroyComposerHud();
     closeModal({ dismissNativeMenu: false });
     document.removeEventListener('pointerdown', onDocumentPointerDownCapture, true);
     document.removeEventListener('click', onDocumentClickCapture, true);

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "fast": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/fast/mcp-server.mjs"
+      ]
+    },
+    "context": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/context/server.js"
+      ]
+    }
+  }
+}

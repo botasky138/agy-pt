@@ -1,0 +1,4015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agy-dart Context Inspector</title>
+  <script src="/preload.js"></script>
+  <style>
+    :root {
+      --bg-canvas: #f7f8fa;
+      --bg-panel: #ffffff;
+      --bg-subtle: #f1f3f6;
+      --bg-hover: #e8ecf2;
+      --bg-inset: #f8f9fb;
+      --border: #e3e8ee;
+      --border-strong: #cbd2dc;
+      --border-subtle: #eef1f5;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --text-muted: #5b6472;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-border: #bfdbfe;
+      --accent-soft: #eff6ff;
+      --accent-text: #1d4ed8;
+      --ok: #16a34a;
+      --ok-text: #166534;
+      --ok-soft: #ecfdf5;
+      --ok-border: #bbf7d0;
+      --warn: #d97706;
+      --warn-text: #92400e;
+      --warn-soft: #fffbeb;
+      --warn-border: #fde68a;
+      --danger: #dc2626;
+      --danger-text: #991b1b;
+      --danger-soft: #fef2f2;
+      --danger-border: #fecaca;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection {
+      background: rgba(37, 99, 235, 0.16);
+      color: #111827;
+    }
+
+    input, select, textarea {
+      font: inherit;
+      color: inherit;
+      caret-color: var(--accent);
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.92em;
+      color: var(--text-primary);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      padding: 1px 4px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .bg-amber-400 {
+      background-color: var(--warn);
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(15, 23, 42, 0.16);
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(15, 23, 42, 0.28);
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .spinning {
+      animation: spin 0.75s linear infinite;
+    }
+
+    /* Shell */
+    .shell {
+      max-width: 820px;
+      margin: 0 auto;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    @media (max-width: 820px) {
+      .shell {
+        border-left: none;
+        border-right: none;
+      }
+    }
+
+    .band {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .band:last-child {
+      border-bottom: none;
+    }
+
+    /* Sticky Top Header */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .topbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .app-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--text-primary);
+    }
+
+    .version-tag {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 2px 7px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+    }
+
+    .status-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.25;
+      border: 1px solid var(--border);
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+
+    .status-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+
+    .status-btn.is-active {
+      border-color: var(--ok-border);
+      background: var(--ok-soft);
+      color: var(--ok-text);
+    }
+
+    .status-btn.is-paused {
+      border-color: var(--warn-border);
+      background: var(--warn-soft);
+      color: var(--warn-text);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.is-active {
+      background: var(--ok);
+    }
+
+    .status-dot.is-paused {
+      background: var(--warn);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    /* Segmented Controls */
+    .segmented {
+      display: inline-flex;
+      align-items: center;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      gap: 3px;
+    }
+
+    .seg-btn {
+      padding: 4px 9px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.2;
+      color: var(--text-secondary);
+      transition: background-color 150ms ease, color 150ms ease;
+      white-space: nowrap;
+    }
+
+    .seg-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .seg-btn.is-active {
+      background: var(--bg-panel);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06), inset 0 0 0 1px var(--border-strong);
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 6px;
+      border-radius: var(--radius-md);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+    }
+
+    .icon-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .icon-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .cutoff-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px 4px 10px;
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .cutoff-select {
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2px 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .cutoff-select:hover {
+      border-color: var(--border-strong);
+    }
+
+    .telemetry-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding-top: 2px;
+    }
+
+    .telemetry-source-val {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .text-err {
+      color: var(--danger-text);
+      font-weight: 500;
+    }
+
+    /* Section Headings */
+    .band-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .band-title-group {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .band-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+
+    .band-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .band-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 6px 11px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.25;
+      white-space: nowrap;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .btn-sm {
+      padding: 4px 9px;
+      font-size: 12px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-inset);
+      border-color: #94a3b8;
+    }
+
+    .btn-secondary.is-warn {
+      background: var(--warn-soft);
+      border-color: var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .btn-secondary.is-warn:hover {
+      background: #fef3c7;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-subtle);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .btn-danger-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--danger-text);
+    }
+
+    .btn-danger-ghost:hover {
+      background: var(--danger-soft);
+      border-color: var(--danger-border);
+    }
+
+    .btn-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .cue-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(146, 64, 14, 0.12);
+      color: var(--warn-text);
+    }
+
+    /* Hairline Metric Grid (Zero nested cards) */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--border-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    @media (min-width: 560px) {
+      .kpi-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    .kpi-cell {
+      background: var(--bg-panel);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .kpi-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+
+    .kpi-value-sm {
+      font-size: 13px;
+    }
+
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .val-ok {
+      color: var(--ok-text);
+    }
+
+    .val-warn {
+      color: var(--warn-text);
+    }
+
+    .val-danger {
+      color: var(--danger-text);
+    }
+
+    /* Progress Bars */
+    .progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      gap: 8px;
+    }
+
+    .progress-label {
+      color: var(--text-secondary);
+    }
+
+    .progress-val {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: var(--ok-text);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .progress-fill-saved {
+      height: 100%;
+      background: var(--ok);
+      transition: width 250ms ease-out;
+    }
+
+    .progress-fill-used {
+      height: 100%;
+      background: var(--danger);
+      transition: width 250ms ease-out;
+    }
+
+    /* Compact Metadata Tags */
+    .meta-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .meta-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.35;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .meta-tag.is-ok {
+      background: var(--ok-soft);
+      border-color: var(--ok-border);
+      color: var(--ok-text);
+    }
+
+    .meta-tag.is-warn {
+      background: var(--warn-soft);
+      border-color: var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .meta-tag.is-danger {
+      background: var(--danger-soft);
+      border-color: var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    .meta-tag.is-info {
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+      color: var(--accent-text);
+    }
+
+    /* TTL Bar */
+    .ttl-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ttl-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      gap: 8px;
+    }
+
+    .ttl-track {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+    }
+
+    .ttl-track.is-expiring {
+      border-color: var(--warn-border);
+    }
+
+    .ttl-track.is-expired {
+      border-color: var(--danger-border);
+    }
+
+    .ttl-fill {
+      height: 100%;
+      background: var(--ok);
+      transition: width 600ms linear, background-color 200ms ease;
+    }
+
+    .ttl-fill.is-expiring {
+      background: var(--warn);
+    }
+
+    .ttl-fill.is-expired {
+      background: var(--danger);
+    }
+
+    .ttl-text-ok {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .ttl-text-warn {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--warn-text);
+      font-weight: 500;
+    }
+
+    .ttl-text-danger {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--danger-text);
+      font-weight: 500;
+    }
+
+    /* Context Composition & Turn Chart */
+    .sub-block {
+      padding-top: 10px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .sub-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .comp-bar {
+      width: 100%;
+      height: 7px;
+      border-radius: 3px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+      display: flex;
+    }
+
+    .comp-seg {
+      height: 100%;
+      min-width: 2px;
+      transition: width 250ms ease;
+    }
+
+    .comp-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .comp-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .comp-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .seg-bg-thinking { background: #6d5bd0; }
+    .seg-bg-fileReads { background: #0284c7; }
+    .seg-bg-toolResults { background: #d97706; }
+    .seg-bg-assistant { background: #15803d; }
+    .seg-bg-user { background: #2563eb; }
+    .seg-bg-toolCalls { background: #64748b; }
+    .seg-bg-media { background: #be123c; }
+
+    .turns-bars {
+      height: 30px;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      padding: 4px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .turn-bar-col {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: flex-end;
+    }
+
+    .turn-bar {
+      width: 100%;
+      border-radius: 1px 1px 0 0;
+      transition: height 200ms ease;
+    }
+
+    .turn-bar.is-good { background: var(--ok); }
+    .turn-bar.is-mid { background: #0284c7; }
+    .turn-bar.is-low { background: var(--warn); }
+    .turn-bar.is-bust { background: var(--danger); }
+
+    .delta-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .delta-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      max-width: 100%;
+    }
+
+    .delta-chip strong {
+      color: var(--warn-text);
+      font-weight: 600;
+    }
+
+    .alert-strip {
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-family: var(--font-mono);
+    }
+
+    .alert-strip.is-warn {
+      background: var(--warn-soft);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .alert-strip.is-danger {
+      background: var(--danger-soft);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    .bust-causes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bust-causes strong {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Handoff Brief Drawer */
+    .handoff-drawer {
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .handoff-preview {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 240px;
+      overflow-y: auto;
+      user-select: text;
+    }
+
+    /* Search & Inputs */
+    .input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .text-input {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 10px;
+      border-radius: var(--radius-md);
+      background: var(--bg-panel);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.3;
+      transition: border-color 150ms ease;
+    }
+
+    .text-input::placeholder {
+      color: #64748b;
+    }
+
+    .text-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .search-results {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 210px;
+      overflow-y: auto;
+    }
+
+    .result-item {
+      padding: 9px 11px;
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .result-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .result-title {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .result-badge {
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .result-body {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-all;
+      user-select: text;
+    }
+
+    /* Recent Sources & Interceptions List */
+    .sources-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 170px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .source-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: var(--radius-md);
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+
+    .source-row.is-clickable {
+      cursor: pointer;
+    }
+
+    .source-row.is-clickable:hover {
+      background: var(--bg-inset);
+      border-color: var(--border-strong);
+    }
+
+    .source-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .source-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .source-dot.is-filter { background: var(--ok); }
+    .source-dot.is-dedup { background: var(--warn); }
+    .source-dot.is-block { background: var(--danger); }
+    .source-dot.is-index { background: var(--accent); }
+
+    .source-action-filter { color: var(--ok-text); font-weight: 600; }
+    .source-action-dedup { color: var(--warn-text); font-weight: 600; }
+    .source-action-block { color: var(--danger-text); font-weight: 600; }
+
+    .source-right {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+    }
+
+    .agent-tag {
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    /* Unified Rectangular Toggle Chips (Categories + Lifecycle Features) */
+    .chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .toggle-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.25;
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      color: var(--text-muted);
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .toggle-chip:hover {
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+    }
+
+    .toggle-chip.is-on {
+      background: var(--bg-panel);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+    }
+
+    .toggle-chip-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #94a3b8;
+    }
+
+    .toggle-chip.is-on .toggle-chip-dot {
+      background: var(--ok);
+    }
+
+    .ext-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .ext-remove {
+      color: var(--text-muted);
+      font-weight: 600;
+      line-height: 1;
+      padding: 0 2px;
+    }
+
+    .ext-remove:hover {
+      color: var(--danger-text);
+    }
+
+    .scope-emphasis {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .footnote {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .muted-note {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Lifecycle Gates List */
+    .gate-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .gate-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.5;
+    }
+
+    .gate-bullet {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--ok);
+      margin-top: 7px;
+      flex-shrink: 0;
+    }
+
+    .gate-name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .health-divider {
+      padding-top: 10px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    /* Collapsible Low-Frequency Settings Accordions */
+    details.accordion-band {
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+    }
+
+    details.accordion-band:last-child {
+      border-bottom: none;
+    }
+
+    details.accordion-band > summary.accordion-summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 13px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      user-select: none;
+      transition: background-color 150ms ease;
+    }
+
+    details.accordion-band > summary.accordion-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.accordion-band > summary.accordion-summary:hover {
+      background: var(--bg-inset);
+    }
+
+    details.accordion-band > summary.accordion-summary:focus:not(:focus-visible) {
+      outline: none;
+    }
+
+    details.accordion-band > summary.accordion-summary:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .accordion-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .accordion-chevron {
+      width: 14px;
+      height: 14px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: transform 150ms ease, color 150ms ease;
+    }
+
+    details.accordion-band[open] .accordion-chevron {
+      transform: rotate(90deg);
+      color: var(--text-primary);
+    }
+
+    .accordion-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .accordion-body {
+      padding: 2px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+  </style>
+</head>
+<body class="custom-scrollbar">
+  <div class="shell">
+
+    <!-- Sticky Header -->
+    <header class="topbar">
+      <div class="topbar-row">
+        <div class="brand-group">
+          <h1 class="app-title" data-i18n="appTitle">agy-dart Context Guard</h1>
+          <span class="version-tag" data-i18n-title="versionTip" title="Current agy-dart Version" id="dashboard-version">--</span>
+          <button id="toggle-active-btn" onclick="toggleActiveState()" class="status-btn is-active" title="Context Mode is active — click to pause">
+            <span id="active-dot" class="status-dot is-active"></span>
+            <span id="active-text">Active</span>
+          </button>
+        </div>
+
+        <div class="header-actions">
+          <div id="lang-toggle" class="segmented" title="Switch Language / 切换界面语言">
+            <button id="lang-zh-btn" onclick="setLanguage('zh')" class="seg-btn" title="切换为中文界面">中文</button>
+            <button id="lang-en-btn" onclick="setLanguage('en')" class="seg-btn is-active" title="Switch to English UI">EN</button>
+          </div>
+          <button id="refresh-btn" onclick="refreshData(true)" class="icon-btn" data-i18n-title="refreshTip" title="Refresh Telemetry">
+            <svg id="refresh-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="topbar-row">
+        <div class="segmented">
+          <button id="scope-conv-btn" onclick="setScope('conversation')" class="seg-btn is-active" data-i18n="scopeConv" data-i18n-title="scopeConvTip" title="Active conversation metrics">Conversation</button>
+          <button id="scope-app-btn" onclick="setScope('app')" class="seg-btn" data-i18n="scopeApp" data-i18n-title="scopeAppTip" title="Current app session (since restart)">Session</button>
+          <button id="scope-lifetime-btn" onclick="setScope('lifetime')" class="seg-btn" data-i18n="scopeLifetime" data-i18n-title="scopeLifetimeTip" title="All-time cumulative metrics">Lifetime</button>
+        </div>
+
+        <div class="cutoff-control">
+          <span id="cutoff-scope-label">Cutoff:</span>
+          <select id="cutoff-select" onchange="changeCutoff(this.value)" class="cutoff-select">
+            <option value="2048">2 KB</option>
+            <option value="4096">4 KB</option>
+            <option value="8192">8 KB</option>
+            <option value="16384">16 KB</option>
+            <option value="32768">32 KB</option>
+            <option value="46080">45 KB (host cap)</option>
+            <option value="65536">64 KB</option>
+            <option id="cutoff-none-opt" value="0" data-i18n="cutoffNone">none</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="telemetry-banner" class="telemetry-bar">
+        <span id="telemetry-source">Showing stats for: <span class="telemetry-source-val">CONVERSATION</span></span>
+        <span id="last-updated-text" class="mono">Updating...</span>
+      </div>
+    </header>
+
+    <!-- Band 1: Context Savings Summary -->
+    <section class="band">
+      <div class="ttl-row" data-i18n-title="savingsBarTip" title="Context Savings: Kept out of context (Green) vs Returned to context (Rose)">
+        <div class="progress-head">
+          <span class="progress-label" data-i18n="contextSaved">Context Saved</span>
+          <span id="comparison-badge" class="progress-val">--% saved</span>
+        </div>
+        <div class="progress-track">
+          <div id="bar-saved-fill" class="progress-fill-saved" style="width: 0%;" data-i18n-title="keptOutTip" title="Kept out of context"></div>
+          <div id="bar-used-fill" class="progress-fill-used" style="width: 0%;" data-i18n-title="returnedTip" title="Returned to context"></div>
+        </div>
+      </div>
+
+      <div class="kpi-strip">
+        <div class="kpi-cell" data-i18n-title="metricReductionTip" title="Percentage of large files and command outputs kept out of context">
+          <span class="kpi-label" data-i18n="metricReductionTitle">Reduction Rate</span>
+          <span class="kpi-value val-ok"><span id="reduction-rate">--%</span></span>
+          <span class="kpi-sub" data-i18n="metricReductionDesc">Context window preserved</span>
+        </div>
+        <div class="kpi-cell" data-i18n-title="metricTokensTip" title="Calculated tokens saved (~4 bytes per token) by keeping large files and outputs out of context">
+          <span class="kpi-label" data-i18n="metricTokensTitle">Tokens Preserved</span>
+          <span id="tokens-preserved" class="kpi-value">~--</span>
+          <span class="kpi-sub"><span data-i18n="metricTokensDescPrefix">Context reduced by</span> <span id="kept-out-kb" class="mono">-- KB</span></span>
+        </div>
+        <div class="kpi-cell" data-i18n-title="metricFilteredTip" title="Total raw data intercepted versus the compact slice actually returned into context">
+          <span class="kpi-label" data-i18n="metricFilteredTitle">Data Filtered</span>
+          <span class="kpi-value kpi-value-sm"><span id="total-raw">-- KB</span> → <span id="total-returned">-- B</span></span>
+          <span class="kpi-sub" data-i18n="metricFilteredDesc">Raw intercepted → Context returned</span>
+        </div>
+        <div class="kpi-cell" data-i18n-title="metricChunksTip" title="Searchable content segments indexed locally so the model can retrieve exact details on demand">
+          <span class="kpi-label" data-i18n="metricChunksTitle">Search Index Chunks</span>
+          <span id="chunks-count" class="kpi-value">--</span>
+          <span id="sources-count" class="kpi-sub">in -- sources</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Band 2: KV-Cache & Context Watermark + Prominent Handoff Action -->
+    <section id="kv-cache-card" class="band">
+      <div class="band-head">
+        <div class="band-title-group">
+          <span class="band-title" data-i18n="kvCardTitle">KV-Cache &amp; Context Watermark</span>
+        </div>
+        <button id="kv-handoff-btn" onclick="toggleHandoffDrawer()" class="btn btn-secondary btn-sm" title="Generate cache-friendly compaction / session-switch Handoff Brief">
+          <svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span data-i18n="handoffBrief">Handoff Brief</span>
+          <span id="kv-handoff-cue" class="hidden"></span>
+        </button>
+      </div>
+
+      <div class="meta-strip">
+        <span id="kv-watermark-badge" class="meta-tag is-ok">OK</span>
+        <span id="kv-temp-badge" class="meta-tag">COLD</span>
+        <span id="kv-ttl-badge" class="meta-tag">TTL: --</span>
+        <span id="kv-model-badge" class="meta-tag hidden">--</span>
+        <span id="kv-cost-savings" class="meta-tag is-ok hidden">Est. ~0% saved</span>
+        <span id="kv-subagent-badge" class="meta-tag is-info hidden">Subagent</span>
+        <span id="kv-loop-badge" class="meta-tag is-warn hidden">LOOP</span>
+      </div>
+
+      <div id="kv-handoff-drawer" class="handoff-drawer hidden">
+        <div class="band-head">
+          <div class="band-title-group">
+            <span class="band-title" data-i18n="handoffBrief">Handoff Brief</span>
+            <span id="kv-handoff-meta" class="band-sub mono truncate">--</span>
+          </div>
+          <div class="band-actions">
+            <button id="kv-handoff-refresh-btn" onclick="loadHandoffBrief()" class="btn btn-ghost btn-sm" data-i18n="refreshBtn" data-i18n-title="handoffRefreshTip" title="Regenerate brief from latest workspace &amp; checkpoint state">Refresh</button>
+            <button id="kv-handoff-copy-btn" onclick="copyHandoffBrief()" class="btn btn-primary btn-sm" data-i18n="copyBriefBtn" data-i18n-title="handoffCopyTip" title="Copy Markdown handoff brief to clipboard">Copy Brief</button>
+            <button id="kv-handoff-close-btn" onclick="toggleHandoffDrawer(false)" class="btn btn-ghost btn-sm" data-i18n-title="handoffCloseTip" title="Close Handoff Brief preview">×</button>
+          </div>
+        </div>
+        <pre id="kv-handoff-preview" class="handoff-preview custom-scrollbar" data-i18n="handoffPlaceholder">Click Handoff Brief to generate snapshot...</pre>
+      </div>
+
+      <div class="kpi-strip">
+        <div class="kpi-cell">
+          <span class="kpi-label" data-i18n="kpiCacheHit">CACHE HIT</span>
+          <span id="kv-hit-rate" class="kpi-value">--%</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label" data-i18n="kpiContext">CONTEXT</span>
+          <span id="kv-ctx-tokens" class="kpi-value">--</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label" data-i18n="kpiCacheBusts">CACHE BUSTS</span>
+          <span id="kv-bust-count" class="kpi-value">0</span>
+        </div>
+        <div class="kpi-cell">
+          <span class="kpi-label" data-i18n="kpiRePrefillWaste">RE-PREFILL WASTE</span>
+          <span id="kv-wasted-tokens" class="kpi-value">0</span>
+        </div>
+      </div>
+
+      <div id="kv-ttl-bar-row" class="ttl-row hidden">
+        <div class="ttl-head">
+          <span id="kv-ttl-bar-label" class="progress-label">Prompt Cache TTL</span>
+          <span id="kv-ttl-bar-text" class="ttl-text-ok">-- / --</span>
+        </div>
+        <div id="kv-ttl-bar-track" class="ttl-track">
+          <div id="kv-ttl-bar-fill" class="ttl-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div id="kv-composition-row" class="sub-block hidden">
+        <div class="sub-head">
+          <span id="kv-composition-label" class="truncate">Context Composition</span>
+          <span id="kv-composition-total" class="mono">--</span>
+        </div>
+        <div id="kv-composition-bar" class="comp-bar"></div>
+        <div id="kv-composition-legend" class="comp-legend"></div>
+      </div>
+
+      <div id="kv-turns-chart-row" class="sub-block hidden">
+        <div class="sub-head">
+          <span id="kv-turns-chart-label">Recent turns hit rate</span>
+          <span class="muted-note" data-i18n="turnsLegend">green &ge;85% &middot; cyan &ge;50% &middot; rose bust</span>
+        </div>
+        <div id="kv-turns-bars" class="turns-bars"></div>
+        <div id="kv-top-deltas-row" class="delta-list hidden"></div>
+      </div>
+
+      <div id="kv-loop-row" class="alert-strip is-warn hidden"></div>
+
+      <div id="kv-bust-causes" class="bust-causes">
+        <span data-i18n="bustAwaiting">Bust attribution: awaiting transcript...</span>
+      </div>
+
+      <div id="kv-ghost-row" class="sub-block hidden">
+        <div class="sub-head">
+          <span id="kv-ghost-efficiency">Guard efficiency: 100%</span>
+          <span id="kv-ghost-recalls" class="mono muted-note"></span>
+        </div>
+        <div id="kv-ghost-recommendation" class="hidden muted-note val-warn"></div>
+      </div>
+    </section>
+
+    <!-- Band 3: Search Inspector & Recent Activity -->
+    <section id="search-inspector-card" class="band">
+      <div class="band-head">
+        <span class="band-title" data-i18n="searchTitle">Search Indexed Files &amp; Outputs</span>
+        <span class="band-sub" data-i18n="searchSubtitle">Keyword &amp; Substring Search</span>
+      </div>
+
+      <div class="input-row">
+        <input id="search-input" type="text" class="text-input" data-i18n-placeholder="searchPlaceholder" placeholder="Search indexed files, code, data, error patterns, symbols..." onkeydown="if(event.key==='Enter' && !event.isComposing) executeSearch()" />
+        <button onclick="executeSearch()" class="btn btn-primary" data-i18n="searchBtn">Search</button>
+      </div>
+
+      <div id="search-results" class="search-results custom-scrollbar"></div>
+
+      <div class="health-divider">
+        <div class="band-head">
+          <span class="band-title" data-i18n="recentSourcesTitle">Recent Indexed Sources &amp; Interceptions</span>
+          <button id="purge-btn" onclick="handlePurgeClick()" class="btn btn-danger-ghost btn-sm">Clear Conversation</button>
+        </div>
+        <div id="sources-list" class="sources-list custom-scrollbar">
+          <div class="muted-note" data-i18n="loadingSources">Loading sources...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Band 4: Exempt File Types (Collapsible Accordion) -->
+    <details id="exempt-accordion" class="accordion-band" open>
+      <summary class="accordion-summary">
+        <span class="accordion-left">
+          <svg class="accordion-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span class="band-title" data-i18n="exemptTitle">Exempt File Types</span>
+          <span class="band-sub" data-i18n="exemptSub">(Bypass read_file size guard only; keeps read-dedup &amp; cat/curl guards)</span>
+        </span>
+        <span class="accordion-right">
+          <span id="category-summary" class="mono muted-note">6 of 7 active</span>
+          <span id="custom-count" class="mono muted-note">0 custom</span>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <div class="band-head">
+          <span class="muted-note" data-i18n="attachExemptText" data-i18n-title="attachExemptTip" title="Files attached directly in chat messages bypass cutoff restrictions so agents can inspect them in full">@ / Drag-drop attachments always exempt</span>
+          <button onclick="resetExemptions()" class="btn btn-ghost btn-sm" data-i18n="resetDefaultsBtn" data-i18n-title="resetDefaultsTip" title="Restore default file categories and clear custom extensions">Reset Defaults</button>
+        </div>
+
+        <div class="sub-head">
+          <span data-i18n="fileCategoriesLabel">File Categories (toggle groups):</span>
+        </div>
+        <div class="footnote" data-i18n="categoryProtectHint">Unchecked groups (such as Source Code) are still readable — files over the cutoff guide the AI to inspect outlines and read line slices instead of dumping the whole file.</div>
+
+        <div id="category-toggles" class="chip-group">
+          <button onclick="toggleCategory('images')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>Images</span></button>
+          <button onclick="toggleCategory('documents')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>Documents</span></button>
+          <button onclick="toggleCategory('code')" class="toggle-chip"><span class="toggle-chip-dot"></span><span>Source Code</span></button>
+          <button onclick="toggleCategory('models3d')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>3D Models</span></button>
+          <button onclick="toggleCategory('music')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>Music</span></button>
+          <button onclick="toggleCategory('video')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>Video</span></button>
+          <button onclick="toggleCategory('archives')" class="toggle-chip is-on"><span class="toggle-chip-dot"></span><span>Archives</span></button>
+        </div>
+
+        <div class="sub-block">
+          <div class="sub-head">
+            <span data-i18n="customTypesLabel">Custom File Types:</span>
+          </div>
+          <div id="exempt-tags" class="chip-group">
+            <span class="muted-note" data-i18n="loadingCustomExt">Loading custom extensions...</span>
+          </div>
+          <div class="input-row">
+            <input id="new-exempt-input" type="text" class="text-input" data-i18n-placeholder="customExtPlaceholder" placeholder="Add custom extension (e.g. .csv, .parquet, .log)..." onkeydown="if(event.key==='Enter' && !event.isComposing) addExemption()" />
+            <button onclick="addExemption()" class="btn btn-secondary" data-i18n="addBtn">+ Add</button>
+          </div>
+        </div>
+
+        <div id="exempt-scope-explain" class="footnote">Exemptions and cutoffs are saved for <strong id="exempt-scope-note" class="scope-emphasis">Conversation</strong> scope.</div>
+      </div>
+    </details>
+
+    <!-- Band 5: Lifecycle Gates & Engine Health (Collapsible Accordion) -->
+    <details id="gates-health-accordion" class="accordion-band" open>
+      <summary class="accordion-summary">
+        <span class="accordion-left">
+          <svg class="accordion-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span class="band-title" data-i18n="gatesHealthTitle">Lifecycle Gates &amp; Engine Health</span>
+        </span>
+        <span class="accordion-right">
+          <span id="doctor-status" class="meta-tag is-ok">HEALTHY</span>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <div class="band-head">
+          <span class="band-title" data-i18n="gatesTitle">Active Lifecycle Gates</span>
+          <div class="band-actions">
+            <button id="toggle-cli-filter-btn" onclick="toggleCliFilter()" class="toggle-chip is-on" data-i18n-title="cliFilterTip" title="Toggle transparent PreToolUse.overwrite CLI filtering">CLI Filter: ON</button>
+            <button id="toggle-read-dedup-btn" onclick="toggleReadDedup()" class="toggle-chip is-on" data-i18n-title="readDedupTip" title="Toggle unchanged read_file session deduplication">Read Dedup: ON</button>
+          </div>
+        </div>
+
+        <div class="gate-list">
+          <div class="gate-item" data-i18n-title="gateReadTip" title="Prevents huge files from overflowing the LLM context window and guards against unchanged duplicate re-reads">
+            <span class="gate-bullet"></span>
+            <div>
+              <span class="gate-name">PreToolUse (read_file):</span>
+              <span id="gate-read-cutoff">Soft-guards files &gt;45 KB un-paged (16 KB logs/minified, 128 KB diffs); &le;800-line slices + 2-strike dedup</span>
+            </div>
+          </div>
+          <div class="gate-item" data-i18n-title="gateCmdTip" title="Transparently filters noisy dev CLI outputs via PreToolUse.overwrite and blocks unbounded raw file dumps">
+            <span class="gate-bullet"></span>
+            <div>
+              <span class="gate-name">PreToolUse (run_command):</span>
+              <span data-i18n-html="gateCmdDesc">Transparently compacts noisy CLI (<code>git</code>, tests, builds) to &le;8.8 KB + blocks unbounded <code>cat</code>/<code>Get-Content</code></span>
+            </div>
+          </div>
+          <div class="gate-item" data-i18n-title="gateLifecycleTip" title="Invalidates read-dedup entries on edits and emits zero-prefix-pollution UI-only KV-cache watermark/TTL warnings">
+            <span class="gate-bullet"></span>
+            <div>
+              <span class="gate-name">SessionStart / PostToolUse / PreInvocation:</span>
+              <span data-i18n="gateLifecycleDesc">Prefix-stable snapshot + edit invalidation + UI-only KV-cache watch</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="health-divider">
+          <div class="band-head">
+            <span class="band-title" data-i18n="healthTitle">Engine &amp; Storage Health</span>
+            <button id="vacuum-btn" onclick="runMaintenanceVacuum()" class="btn btn-ghost btn-sm" data-i18n="vacuumBtn" data-i18n-title="vacuumTip" title="Prune stale records (>14d) and run SQLite VACUUM + WAL checkpoint">Prune &amp; Vacuum</button>
+          </div>
+
+          <div class="kpi-strip">
+            <div class="kpi-cell" data-i18n-title="healthStorageTip" title="Local native SQLite database engine + disk size">
+              <span class="kpi-label" data-i18n="healthStorage">STORAGE</span>
+              <span id="db-size-label" class="kpi-value kpi-value-sm">SQLite (WAL)</span>
+            </div>
+            <div class="kpi-cell" data-i18n-title="healthSearchTip" title="Hybrid search combining Porter BM25 + Trigram RRF with heading-aware Markdown chunking">
+              <span class="kpi-label" data-i18n="healthSearch">SEARCH MODE</span>
+              <span class="kpi-value kpi-value-sm">BM25 + Tri (MD)</span>
+            </div>
+            <div class="kpi-cell" data-i18n-title="healthCapTip" title="Maximum preview slice of command/script output returned into context">
+              <span class="kpi-label" data-i18n="healthCap">INLINE CAP</span>
+              <span id="sandbox-cap" class="kpi-value kpi-value-sm">7.9 KB cap</span>
+            </div>
+            <div class="kpi-cell" data-i18n-title="healthCliDedupTip" title="Breakdown of CLI filters and unchanged read-dedup saves in current scope">
+              <span class="kpi-label" data-i18n="healthCliDedup">CLI / DEDUP</span>
+              <span id="cli-dedup-counts" class="kpi-value kpi-value-sm">0 / 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+  </div>
+
+  <script>
+    const LANG_STORAGE_KEY = 'agy-dart-ui-lang';
+    const I18N = {
+      en: {
+        pageTitle: 'agy-dart Context Inspector',
+        appTitle: 'agy-dart Context Guard',
+        activeText: 'Active',
+        activeTip: 'Context Mode is active — click to pause',
+        pausedText: 'Paused',
+        pausedTip: 'Context Mode is paused — click to activate',
+        scopeConv: 'Conversation',
+        scopeConvTip: 'Active conversation metrics',
+        scopeApp: 'Session',
+        scopeAppTip: 'Current app session (since restart)',
+        scopeLifetime: 'Lifetime',
+        scopeLifetimeTip: 'All-time cumulative metrics',
+        cutoffConvLabel: 'Cutoff:',
+        cutoffAppLabel: 'Session Cutoff:',
+        cutoffLifetimeLabel: 'Global Cutoff:',
+        cutoffNone: 'none',
+        versionTip: 'Current agy-dart Version',
+        refreshTip: 'Refresh Telemetry',
+        showingStatsFor: 'Scope:',
+        scopeBannerConv: 'CONVERSATION',
+        scopeBannerApp: 'SESSION',
+        scopeBannerSince: 'since {t}',
+        scopeBannerLifetime: 'LIFETIME (ALL-TIME)',
+        disconnected: 'Disconnected',
+        updating: 'Updating...',
+        updatedAt: 'Updated {t}',
+        errorPrefix: 'Error: {msg}',
+        savingsBarTip: 'Context Savings: Kept out of context (Green) vs Returned to context (Red)',
+        contextSaved: 'Context Saved',
+        keptOutTip: 'Kept out of context',
+        returnedTip: 'Returned to context',
+        pctSaved: '{rate} saved',
+        savedWord: 'saved',
+        metricReductionTip: 'Percentage of large files and command outputs kept out of context',
+        metricReductionTitle: 'Reduction Rate',
+        metricReductionDesc: 'Window preserved',
+        metricTokensTip: 'Calculated tokens saved (~4 bytes per token) by keeping large files and outputs out of context',
+        metricTokensTitle: 'Tokens Preserved',
+        metricTokensDescPrefix: 'Reduced by',
+        metricFilteredTip: 'Total raw data intercepted versus the compact slice actually returned into context',
+        metricFilteredTitle: 'Data Filtered',
+        metricFilteredDesc: 'Raw → Returned',
+        metricChunksTip: 'Searchable content segments indexed locally so the model can retrieve exact details on demand',
+        metricChunksTitle: 'Search Index Chunks',
+        metricChunksDesc: 'Local FTS5 retrieval',
+        inSourcesOne: 'in 1 source',
+        inSourcesMany: 'in {n} sources',
+        kvCardTitle: 'KV-Cache & Context Watermark',
+        handoffBrief: 'Handoff Brief',
+        handoffTipDefault: 'Generate cache-friendly compaction / session-switch Handoff Brief',
+        handoffTipCritical: 'Critical context watermark — copy Handoff Brief before /compact',
+        handoffTipCold: 'Cache is cold — good moment to copy Handoff Brief before /compact',
+        handoffCueCompact: 'COMPACT',
+        handoffCueCold: 'COLD',
+        kpiCacheHit: 'CACHE HIT',
+        kpiContext: 'CONTEXT',
+        kpiCacheBusts: 'CACHE BUSTS',
+        kpiRePrefillWaste: 'RE-PREFILL WASTE',
+        turnsLegend: 'green ≥85% · blue ≥50% · red bust',
+        recentTurnsLabel: 'Recent {n} turns hit rate',
+        bustAwaiting: 'Bust attribution: awaiting transcript...',
+        noTranscriptUsage: 'No transcript token usage recorded yet.',
+        refreshBtn: 'Refresh',
+        handoffRefreshTip: 'Regenerate brief from latest workspace & checkpoint state',
+        copyBriefBtn: 'Copy Brief',
+        copiedBtn: 'Copied!',
+        copyFailedBtn: 'Copy failed',
+        handoffCopyTip: 'Copy Markdown handoff brief to clipboard',
+        handoffCloseTip: 'Close Handoff Brief preview',
+        handoffPlaceholder: 'Click Handoff Brief to generate snapshot...',
+        handoffGenerating: 'Generating...',
+        handoffGeneratingBody: 'Generating cache-friendly handoff brief...',
+        handoffEmpty: '(empty handoff brief)',
+        handoffTruncated: 'truncated',
+        handoffError: 'Error',
+        handoffFailBody: 'Failed to build handoff brief: {msg}',
+        exemptTitle: 'Exempt File Types',
+        exemptSub: '(Bypass read_file size guard only; keeps read-dedup & cat/curl guards)',
+        attachExemptTip: 'Files attached directly in chat messages bypass cutoff restrictions so agents can inspect them in full',
+        attachExemptText: '@ / Drag-drop attachments always exempt',
+        resetDefaultsBtn: 'Reset Defaults',
+        resetDefaultsTip: 'Restore default file categories and clear custom extensions',
+        fileCategoriesLabel: 'File Categories (toggle groups):',
+        categoryProtectHint: 'Unchecked groups (such as Source Code) are still readable — files over the cutoff guide the AI to inspect outlines and read line slices instead of dumping the whole file.',
+        catSummary: '{active} of {total} active',
+        catTip: '{name} ({count} types: {sample}) — Click to {action}',
+        actionDisable: 'disable',
+        actionEnable: 'enable',
+        catImages: 'Images',
+        catDocuments: 'Documents',
+        catCode: 'Source Code',
+        catModels3d: '3D Models',
+        catMusic: 'Music',
+        catVideo: 'Video',
+        catArchives: 'Archives',
+        customTypesLabel: 'Custom File Types:',
+        customCount: '{n} custom',
+        loadingCustomExt: 'Loading custom extensions...',
+        noCustomExt: 'No custom extensions added.',
+        removeCustomTip: 'Remove custom exemption',
+        customExtPlaceholder: 'Add extension (e.g. .csv, .parquet, .log)...',
+        addBtn: '+ Add',
+        scopeExplainHtml: 'Exemptions and cutoffs save to <strong id="exempt-scope-note" class="scope-emphasis">{scope}</strong> scope (Conversation: this chat; Session: until restart; Lifetime: persistent).',
+        searchTitle: 'Search Indexed Files & Outputs',
+        searchSubtitle: 'BM25 + Trigram RRF',
+        searchPlaceholder: 'Search indexed files, code, logs, errors, symbols...',
+        searchBtn: 'Search',
+        loadingChunks: 'Loading chunks for source...',
+        searchingFts: 'Searching SQLite FTS5...',
+        noMatchingChunks: 'No matching chunks found.',
+        searchFailed: 'Search failed: {msg}',
+        chunkLabel: 'Chunk {i}/{total}',
+        recentSourcesTitle: 'Recent Indexed Sources & Interceptions',
+        purgeConvBtn: 'Clear Conversation',
+        purgeConvTip: 'Clear indexed sources and events for current conversation',
+        purgeAppBtn: 'Clear Session',
+        purgeAppTip: 'Clear indexed sources and events recorded since app restart',
+        purgeLifetimeBtn: 'Reset Lifetime',
+        purgeLifetimeTip: 'Clear all stored sources, events, and metrics across all sessions',
+        loadingSources: 'Loading sources...',
+        noSourcesView: 'No indexed sources or interceptions in current view',
+        filteredPrefix: 'Filtered ({key}):',
+        dedupPrefix: 'Dedup {tool}:',
+        blockedPrefix: 'Blocked {tool}:',
+        triggeredBySubagent: 'Triggered by subagent: {agent}',
+        clickToInspectSource: 'Click to view indexed chunks in Search Inspector: {label}',
+        chunkOne: 'chunk',
+        chunkMany: 'chunks',
+        gatesHealthTitle: 'Lifecycle Gates & Engine Health',
+        gatesTitle: 'Active Lifecycle Gates',
+        cliFilterLabel: 'CLI Filter',
+        readDedupLabel: 'Read Dedup',
+        cliFilterTip: 'Toggle transparent PreToolUse.overwrite CLI filtering',
+        readDedupTip: 'Toggle unchanged read_file session deduplication',
+        stateOn: 'ON',
+        stateOff: 'OFF',
+        gateReadTip: 'Prevents huge files from overflowing the LLM context window and guards against unchanged duplicate re-reads',
+        gateReadDisabled: 'read_file size cutoff disabled (read-dedup & cat/curl guards stay active)',
+        gateReadEnabled: 'Soft-guards >{size} un-paged ({noise} logs/minified, {review} diffs); ≤{lines}-line slices + 2-strike dedup',
+        gateReadStrict: 'Strict-blocks >{size} un-paged ({noise} logs/minified, {review} diffs); ≤{lines}-line slices + 2-strike dedup',
+        gateCmdTip: 'Transparently filters noisy dev CLI outputs via PreToolUse.overwrite and blocks unbounded raw file dumps',
+        gateCmdDesc: 'Transparently compacts noisy CLI (<code>git</code>, tests, builds) to ≤8.8 KB + blocks unbounded <code>cat</code>/<code>Get-Content</code>',
+        gateLifecycleTip: 'Invalidates read-dedup entries on edits and emits zero-prefix-pollution UI-only KV-cache watermark/TTL warnings',
+        gateLifecycleDesc: 'Prefix-stable snapshot + edit invalidation + UI-only KV-cache watch',
+        healthTitle: 'Engine & Storage Health',
+        vacuumBtn: 'Prune & Vacuum',
+        vacuumingBtn: 'Vacuuming...',
+        vacuumFreedBtn: 'Freed {size}',
+        vacuumOkBtn: 'Vacuum OK',
+        vacuumTip: 'Prune stale records (>14d) and run SQLite VACUUM + WAL checkpoint',
+        statusHealthy: 'HEALTHY',
+        healthStorage: 'STORAGE',
+        healthStorageTip: 'Local native SQLite database engine + disk size',
+        healthSearch: 'SEARCH MODE',
+        healthSearchTip: 'Hybrid search combining Porter BM25 + Trigram RRF with heading-aware Markdown chunking',
+        healthCap: 'INLINE CAP',
+        healthCapTip: 'Maximum preview slice of command/script output returned into context',
+        capFormat: '{size} cap',
+        healthCliDedup: 'CLI / DEDUP',
+        healthCliDedupTip: 'Breakdown of CLI filters and unchanged read-dedup saves in current scope',
+        guardEfficiency: 'Guard efficiency: {pct}%',
+        guardRecalls: 'recalls: {rec}/{tot}',
+        ttlBarLabel: 'Prompt Cache TTL',
+        ttlExpiredBar: '0s / {total} · Expired ({idle} idle)',
+        ttlExpiredBadge: 'TTL EXPIRED ({idle} idle)',
+        ttlExpiringBar: '{rem} / {total} · Expiring soon',
+        ttlLeftBadge: 'TTL {rem} left',
+        ttlColdBadge: 'TTL: cold',
+        tempHot: 'HOT',
+        tempWarm: 'WARM',
+        tempCold: 'COLD',
+        wmOk: 'OK',
+        wmHigh: 'HIGH >={k}k',
+        wmCritical: 'CRITICAL >={k}k',
+        estSavedUsd: 'Est. ~{pct}% ({usd} saved)',
+        estNegUsd: 'Est. {pct}% ({usd})',
+        estSavedPct: 'Est. ~{pct}% saved',
+        compTitle: 'Context Composition',
+        compTop: 'Context Composition · top: {name}',
+        estTokShort: '~{tok} est. tok',
+        estTokUnit: 'est. tok',
+        compTotalTip: 'Estimated content volume: {tok} tokens ({bytes} bytes)',
+        itemOne: 'item',
+        itemMany: 'items',
+        segThinking: 'Thinking',
+        segFileReads: 'File Reads',
+        segToolResults: 'Tool Outputs',
+        segAssistant: 'Assistant',
+        segUser: 'User',
+        segToolCalls: 'Tool Calls',
+        segMedia: 'Media',
+        subagentsLabel: 'Subagents: {count}{share}',
+        subagentCountOne: '1 subagent',
+        subagentCountMany: '{n} subagents',
+        subTurnCountOne: '1 sub-turn',
+        subTurnCountMany: '{n} sub-turns',
+        subagentTip: 'Primary vs Subagent | Delegations: {deleg} | Turns: {priT} primary / {subT} subagent | Tool calls: {priC} primary / {subC} subagent | Subagent traffic: ~{tok} est. tok ({share}%)',
+        oscillationBadge: 'OSCILLATION x{n}',
+        loopBadge: 'LOOP x{n}',
+        oscillationPart: '{n}x edit↔fail oscillation{files}',
+        repeatPart: '{pct}% repeat ({tool} ×{n})',
+        convergenceWatch: 'Convergence watch ({status}): {parts}',
+        topGrowth: 'Top growth:',
+        turnBarTip: 'Turn #{turn}: {pct}% hit | {ctx}k tok ({delta}){tool}{bust}',
+        turnBustTag: ' | BUST: {cause}',
+        turnDeltaTip: 'Turn #{turn}: +{delta} tokens',
+        bustsLabel: 'Busts:',
+        bustTtl: 'TTL',
+        bustCompact: 'Compact',
+        bustModel: 'Model',
+        bustSysMsg: 'SysMsg',
+        bustMedia: 'Media',
+        bustDrift: 'Drift',
+        bustDupReads: 'DupReads:',
+        bustWrites: 'Writes:',
+        bustThink: 'Think:',
+        bustWritesTip: 'Prompt cache write tokens ({mult}x billing)',
+        bustThinkTip: 'Thinking / reasoning tokens',
+        ctxTip: 'Context: {cur} / {win} tokens (source: {src})',
+        wasteTipUsd: 'Est. re-prefill waste: {usd} ({tok} tokens)',
+        wasteTipTok: 'Re-prefill waste: {tok} tokens',
+        wmTip: 'Window: {win}k ({src}) | Warn >={warn}k | Critical >={crit}k',
+        modelTip: 'Model: {model} | Window: {win}k ({src}) | Discount: {disc}% | Write: {mult}x',
+        savingsTip: 'Est. input cost: {cost} | Saved: {saved} | Write mult: {mult}x{writes}',
+        savingsWritesPart: ' | Writes: {k}k tok',
+        ttlTip: 'Effective TTL: {ttl} (source: {src}){gap}',
+        ttlGapPart: ' | Max warm gap: {gap}',
+        confirmResetExempt: 'Reset file categories to defaults and clear custom extensions?',
+        confirmPurgeConv: 'Clear indexed chunks and metrics for this conversation?',
+        confirmPurgeApp: 'Clear indexed chunks and metrics recorded during this application session?',
+        confirmPurgeLifetime: 'Are you sure you want to reset all lifetime telemetry and index statistics across all sessions? This action cannot be undone.',
+        alertAddExemptFail: 'Failed to add exemption: {msg}',
+        alertRemoveExemptFail: 'Failed to remove exemption: {msg}',
+        alertResetExemptFail: 'Failed to reset exemptions: {msg}',
+        alertMaintFail: 'Maintenance failed: {msg}',
+        alertPurgeFail: 'Purge failed: {msg}'
+      },
+      zh: {
+        pageTitle: 'agy-dart 上下文检查器',
+        appTitle: 'agy-dart 上下文护栏',
+        activeText: '运行中',
+        activeTip: '上下文护栏已开启 — 点击暂停',
+        pausedText: '已暂停',
+        pausedTip: '上下文护栏已暂停 — 点击恢复',
+        scopeConv: '当前对话',
+        scopeConvTip: '当前对话窗口的统计指标',
+        scopeApp: '本次会话',
+        scopeAppTip: '自 Antigravity 启动以来的统计指标',
+        scopeLifetime: '历史累计',
+        scopeLifetimeTip: '全历史累计统计指标',
+        cutoffConvLabel: '截断阈值：',
+        cutoffAppLabel: '会话阈值：',
+        cutoffLifetimeLabel: '全局阈值：',
+        cutoffNone: '不限制',
+        versionTip: '当前 agy-dart 版本',
+        refreshTip: '刷新遥测数据',
+        showingStatsFor: '统计范围：',
+        scopeBannerConv: '当前对话',
+        scopeBannerApp: '本次会话',
+        scopeBannerSince: '始于 {t}',
+        scopeBannerLifetime: '历史累计（全部）',
+        disconnected: '连接已断开',
+        updating: '更新中...',
+        updatedAt: '更新于 {t}',
+        errorPrefix: '错误：{msg}',
+        savingsBarTip: '上下文节省比例：已挡在上下文外（绿） vs 实际注入上下文（红）',
+        contextSaved: '上下文节省率',
+        keptOutTip: '已挡在上下文外',
+        returnedTip: '实际注入上下文',
+        pctSaved: '已省 {rate}',
+        savedWord: '已省',
+        metricReductionTip: '大文件与命令输出被挡在上下文之外的体积比例',
+        metricReductionTitle: '压缩节省率',
+        metricReductionDesc: '上下文留存比例',
+        metricTokensTip: '按约 4 字节 / Token 估算通过拦截与过滤节省的 Token 数',
+        metricTokensTitle: '已省 Token',
+        metricTokensDescPrefix: '已减少注入',
+        metricFilteredTip: '原始拦截数据总量对比实际注入模型的精简内容',
+        metricFilteredTitle: '已过滤数据',
+        metricFilteredDesc: '原始拦截 → 实际注入',
+        metricChunksTip: '已写入本地 SQLite FTS5 索引的分块数，支持按需精准检索',
+        metricChunksTitle: '本地索引分块',
+        metricChunksDesc: '本地 FTS5 检索',
+        inSourcesOne: '共 1 个来源',
+        inSourcesMany: '共 {n} 个来源',
+        kvCardTitle: 'KV-Cache 缓存与上下文水位',
+        handoffBrief: '交接简报',
+        handoffTipDefault: '生成缓存友好的上下文压缩 / 跨窗口交接简报',
+        handoffTipCritical: '上下文水位告急 — 建议 /compact 前先复制交接简报',
+        handoffTipCold: '缓存已冷 — 适合复制交接简报后执行 /compact',
+        handoffCueCompact: '建议压缩',
+        handoffCueCold: '冷态可压',
+        kpiCacheHit: '缓存命中率',
+        kpiContext: '当前上下文',
+        kpiCacheBusts: '缓存失效',
+        kpiRePrefillWaste: '重填浪费',
+        turnsLegend: '绿 ≥85% · 蓝 ≥50% · 红 失效',
+        recentTurnsLabel: '近 {n} 轮缓存命中率',
+        bustAwaiting: '失效归因：等待会话轨迹...',
+        noTranscriptUsage: '暂未记录到会话 Token 用量。',
+        refreshBtn: '刷新',
+        handoffRefreshTip: '基于最新工作区与检查点重新生成简报',
+        copyBriefBtn: '复制简报',
+        copiedBtn: '已复制',
+        copyFailedBtn: '复制失败',
+        handoffCopyTip: '复制 Markdown 交接简报到剪贴板',
+        handoffCloseTip: '收起交接简报预览',
+        handoffPlaceholder: '点击右上角「交接简报」生成当前会话快照...',
+        handoffGenerating: '生成中...',
+        handoffGeneratingBody: '正在生成交接简报...',
+        handoffEmpty: '（空交接简报）',
+        handoffTruncated: '已截断',
+        handoffError: '出错',
+        handoffFailBody: '生成交接简报失败：{msg}',
+        exemptTitle: '豁免文件类型',
+        exemptSub: '（仅跳过 read_file 体积拦截，保留读去重与 cat/curl 防护）',
+        attachExemptTip: '聊天中通过 @ 或拖拽直接附加的文件始终豁免截断，保证模型完整查看',
+        attachExemptText: '@ / 拖拽附件始终豁免',
+        resetDefaultsBtn: '恢复默认',
+        resetDefaultsTip: '恢复默认文件分组并清空自定义扩展名',
+        fileCategoriesLabel: '文件分组（点击开关）：',
+        categoryProtectHint: '未勾选分组（如源代码）并非禁止读取，而是在文件超过截断阈值时引导 AI 先看大纲再按行分段精读，防止大文件撑爆上下文。',
+        catSummary: '已启用 {active} / {total} 组',
+        catTip: '{name}（{count} 种：{sample}）— 点击{action}',
+        actionDisable: '关闭',
+        actionEnable: '启用',
+        catImages: '图片',
+        catDocuments: '文档',
+        catCode: '源代码',
+        catModels3d: '3D 模型',
+        catMusic: '音频',
+        catVideo: '视频',
+        catArchives: '压缩包',
+        customTypesLabel: '自定义扩展名：',
+        customCount: '{n} 项自定义',
+        loadingCustomExt: '正在加载自定义扩展名...',
+        noCustomExt: '暂无自定义扩展名。',
+        removeCustomTip: '移除该自定义豁免',
+        customExtPlaceholder: '添加扩展名（如 .csv, .parquet, .log）...',
+        addBtn: '+ 添加',
+        scopeExplainHtml: '当前写入 <strong id="exempt-scope-note" class="scope-emphasis">{scope}</strong> 范围（当前对话仅本窗口；本次会话重启前有效；历史累计持久化）。',
+        searchTitle: '本地索引检索',
+        searchSubtitle: 'BM25 + Trigram RRF',
+        searchPlaceholder: '搜索已索引的文件、代码、日志、报错或符号...',
+        searchBtn: '搜索',
+        loadingChunks: '正在加载该来源的分块...',
+        searchingFts: '正在检索 SQLite FTS5...',
+        noMatchingChunks: '未找到匹配分块。',
+        searchFailed: '搜索失败：{msg}',
+        chunkLabel: '分块 {i}/{total}',
+        recentSourcesTitle: '最近索引来源与拦截记录',
+        purgeConvBtn: '清空当前对话',
+        purgeConvTip: '清空当前对话的索引来源与统计事件',
+        purgeAppBtn: '清空本次会话',
+        purgeAppTip: '清空本次应用启动后记录的索引与事件',
+        purgeLifetimeBtn: '重置全部历史',
+        purgeLifetimeTip: '清空所有会话存储的全部索引来源、事件与统计',
+        loadingSources: '正在加载来源...',
+        noSourcesView: '当前范围暂无索引来源或拦截记录',
+        filteredPrefix: '已过滤 ({key})：',
+        dedupPrefix: '去重拦截 {tool}：',
+        blockedPrefix: '已拦截 {tool}：',
+        triggeredBySubagent: '由子 Agent 触发：{agent}',
+        clickToInspectSource: '点击在索引检索中查看分块：{label}',
+        chunkOne: '分块',
+        chunkMany: '分块',
+        gatesHealthTitle: '生命周期护栏与存储健康',
+        gatesTitle: '生命周期护栏状态',
+        cliFilterLabel: 'CLI 过滤',
+        readDedupLabel: '读去重',
+        cliFilterTip: '开关透明 CLI 输出降噪（PreToolUse.overwrite）',
+        readDedupTip: '开关同会话未变更文件二次读取去重',
+        stateOn: '开',
+        stateOff: '关',
+        gateReadTip: '防止超大文件撑爆上下文，并拦截未修改文件的重复读取',
+        gateReadDisabled: 'read_file 体积拦截已关闭（读去重与 cat/curl 防护仍生效）',
+        gateReadEnabled: '>{size} 未分页软护栏（日志/压缩 {noise}，diff/patch {review}）；≤{lines} 行切片 + 二次读去重',
+        gateReadStrict: '>{size} 未分页严格拦截（日志/压缩 {noise}，diff/patch {review}）；≤{lines} 行切片 + 二次读去重',
+        gateCmdTip: '通过 PreToolUse.overwrite 透明压缩开发命令输出，并硬拒绝无界整文件打印',
+        gateCmdDesc: '透明压缩高频 CLI（<code>git</code>、测试、构建）至 ≤8.8 KB，并拦截无界 <code>cat</code>/<code>Get-Content</code>',
+        gateLifecycleTip: '编辑文件自动失效读去重缓存，并通过零前缀污染 UI-only 通道推送 KV-Cache 水位/TTL 预警',
+        gateLifecycleDesc: '前缀稳定启动快照 + 编辑自动失效去重 + 零污染 UI-only 缓存监控',
+        healthTitle: '引擎与存储健康',
+        vacuumBtn: '清理并压缩库',
+        vacuumingBtn: '压缩中...',
+        vacuumFreedBtn: '已释放 {size}',
+        vacuumOkBtn: '压缩完成',
+        vacuumTip: '清理超过 14 天的过期记录并执行 SQLite VACUUM 与 WAL 检查点',
+        statusHealthy: '健康',
+        healthStorage: '存储引擎',
+        healthStorageTip: '本地原生 SQLite 数据库引擎与磁盘占用',
+        healthSearch: '检索模式',
+        healthSearchTip: 'Porter BM25 + Trigram RRF 混合检索，支持 Markdown 标题感知分块',
+        healthCap: '内联上限',
+        healthCapTip: '单次工具/沙盒输出内联返回给模型的最大体积上限',
+        capFormat: '上限 {size}',
+        healthCliDedup: '过滤 / 去重',
+        healthCliDedupTip: '当前范围内 CLI 过滤与未变读去重的生效次数',
+        guardEfficiency: '护栏有效率：{pct}%',
+        guardRecalls: '分页召回：{rec}/{tot}',
+        ttlBarLabel: '提示词缓存 TTL',
+        ttlExpiredBar: '0s / {total} · 已过期（空闲 {idle}）',
+        ttlExpiredBadge: 'TTL 已过期（空闲 {idle}）',
+        ttlExpiringBar: '{rem} / {total} · 即将过期',
+        ttlLeftBadge: 'TTL 剩余 {rem}',
+        ttlColdBadge: 'TTL：冷态',
+        tempHot: '热缓存',
+        tempWarm: '温缓存',
+        tempCold: '冷缓存',
+        wmOk: '正常',
+        wmHigh: '偏高 >={k}k',
+        wmCritical: '告急 >={k}k',
+        estSavedUsd: '预计省 ~{pct}%（省 {usd}）',
+        estNegUsd: '预计 {pct}%（{usd}）',
+        estSavedPct: '预计省 ~{pct}%',
+        compTitle: '上下文构成',
+        compTop: '上下文构成 · 占比最高：{name}',
+        estTokShort: '约 {tok} tok',
+        estTokUnit: '估算 tok',
+        compTotalTip: '估算内容体量：{tok} tokens（{bytes} 字节）',
+        itemOne: '项',
+        itemMany: '项',
+        segThinking: '思考链',
+        segFileReads: '文件读取',
+        segToolResults: '工具输出',
+        segAssistant: '助手回复',
+        segUser: '用户输入',
+        segToolCalls: '工具调用',
+        segMedia: '媒体附件',
+        subagentsLabel: '子 Agent：{count}{share}',
+        subagentCountOne: '1 次委派',
+        subagentCountMany: '{n} 次委派',
+        subTurnCountOne: '1 轮子调用',
+        subTurnCountMany: '{n} 轮子调用',
+        subagentTip: '主对话 vs 子 Agent | 委派：{deleg} 次 | 轮次：主 {priT} / 子 {subT} | 工具调用：主 {priC} / 子 {subC} | 子 Agent 流量：约 {tok} tok（{share}%）',
+        oscillationBadge: '震荡 ×{n}',
+        loopBadge: '循环 ×{n}',
+        oscillationPart: '{n} 次改错↔失败震荡{files}',
+        repeatPart: '{pct}% 重复调用（{tool} ×{n}）',
+        convergenceWatch: '收敛监控（{status}）：{parts}',
+        topGrowth: '增长 Top：',
+        turnBarTip: '第 {turn} 轮：命中 {pct}% | 上下文 {ctx}k tok（{delta}）{tool}{bust}',
+        turnBustTag: ' | 失效：{cause}',
+        turnDeltaTip: '第 {turn} 轮：+{delta} tokens',
+        bustsLabel: '失效归因：',
+        bustTtl: 'TTL过期',
+        bustCompact: '压缩',
+        bustModel: '切模型',
+        bustSysMsg: '系统注入',
+        bustMedia: '多模态',
+        bustDrift: '前缀漂移',
+        bustDupReads: '重复读：',
+        bustWrites: '缓存写入：',
+        bustThink: '思考：',
+        bustWritesTip: '提示词缓存写入 Token（{mult}x 计费）',
+        bustThinkTip: '思考 / 推理 Token',
+        ctxTip: '上下文：{cur} / {win} tokens（来源：{src}）',
+        wasteTipUsd: '预计重填浪费：{usd}（{tok} tokens）',
+        wasteTipTok: '重填浪费：{tok} tokens',
+        wmTip: '窗口：{win}k（{src}）| 预警 >={warn}k | 告急 >={crit}k',
+        modelTip: '模型：{model} | 窗口：{win}k（{src}）| 折扣：{disc}% | 写倍率：{mult}x',
+        savingsTip: '预计输入成本：{cost} | 已省：{saved} | 写倍率：{mult}x{writes}',
+        savingsWritesPart: ' | 缓存写入：{k}k tok',
+        ttlTip: '生效 TTL：{ttl}（来源：{src}）{gap}',
+        ttlGapPart: ' | 最大热命中间隔：{gap}',
+        confirmResetExempt: '确认恢复默认文件分组并清空所有自定义扩展名？',
+        confirmPurgeConv: '确认清空当前对话的索引分块与统计指标？',
+        confirmPurgeApp: '确认清空本次应用启动以来记录的索引分块与统计指标？',
+        confirmPurgeLifetime: '确定要重置所有会话的全部历史遥测与索引统计吗？此操作不可撤销。',
+        alertAddExemptFail: '添加豁免失败：{msg}',
+        alertRemoveExemptFail: '移除豁免失败：{msg}',
+        alertResetExemptFail: '重置豁免失败：{msg}',
+        alertMaintFail: '维护操作失败：{msg}',
+        alertPurgeFail: '清理失败：{msg}'
+      }
+    };
+
+    const CAT_I18N_KEYS = {
+      images: 'catImages',
+      documents: 'catDocuments',
+      code: 'catCode',
+      models3d: 'catModels3d',
+      music: 'catMusic',
+      video: 'catVideo',
+      archives: 'catArchives'
+    };
+
+    const SEG_I18N_KEYS = {
+      thinking: 'segThinking',
+      fileReads: 'segFileReads',
+      toolResults: 'segToolResults',
+      assistant: 'segAssistant',
+      user: 'segUser',
+      toolCalls: 'segToolCalls',
+      media: 'segMedia'
+    };
+
+    function detectInitialLang() {
+      try {
+        const params = new URLSearchParams(window.location?.search || '');
+        const qp = String(params.get('lang') || '').toLowerCase();
+        if (qp === 'zh' || qp === 'en') return qp;
+      } catch {}
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+          const saved = String(localStorage.getItem(LANG_STORAGE_KEY) || '').toLowerCase();
+          if (saved === 'zh' || saved === 'en') return saved;
+        }
+      } catch {}
+      try {
+        const navLang = String(navigator?.language || '').toLowerCase();
+        if (navLang.startsWith('zh')) return 'zh';
+      } catch {}
+      return 'en';
+    }
+
+    let currentLang = detectInitialLang();
+    let currentScope = 'conversation';
+    let cachedStats = null;
+    let cachedKv = null;
+    let cachedResume = null;
+    let cachedDoctor = null;
+    let cachedCompactAdvice = 'none';
+    let cachedLastUpdatedDate = null;
+    let cachedDisconnectedErr = null;
+    let cachedConvId = '';
+    let cachedHandoffData = null;
+    let isProtectionPaused = false;
+    let kvTtlState = null;
+    let kvTtlTimer = null;
+    let pollTimer = null;
+    let handoffDrawerOpen = false;
+    let lastHandoffMarkdown = '';
+    let handoffCopyResetTimer = null;
+    let handoffFetchSeq = 0;
+    let refreshSeq = 0;
+
+    function t(key, vars) {
+      const dict = I18N[currentLang] || I18N.en;
+      let str = Object.prototype.hasOwnProperty.call(dict, key)
+        ? dict[key]
+        : (Object.prototype.hasOwnProperty.call(I18N.en, key) ? I18N.en[key] : key);
+      if (vars && typeof vars === 'object') {
+        for (const [k, v] of Object.entries(vars)) {
+          str = str.replaceAll(`{${k}}`, String(v ?? ''));
+        }
+      }
+      return str;
+    }
+
+    function tCat(catId, fallback) {
+      const k = CAT_I18N_KEYS[catId];
+      return k ? t(k) : (fallback || catId);
+    }
+
+    function tSeg(segKey, fallback) {
+      const k = SEG_I18N_KEYS[segKey];
+      return k ? t(k) : (fallback || segKey);
+    }
+
+    function updateLangButtons() {
+      const zhBtn = document.getElementById('lang-zh-btn');
+      const enBtn = document.getElementById('lang-en-btn');
+      if (zhBtn) zhBtn.className = currentLang === 'zh' ? 'seg-btn is-active' : 'seg-btn';
+      if (enBtn) enBtn.className = currentLang === 'en' ? 'seg-btn is-active' : 'seg-btn';
+    }
+
+    function applyStaticTranslations() {
+      try {
+        if (document.documentElement) {
+          document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+        }
+        document.title = t('pageTitle');
+      } catch {}
+      if (typeof document.querySelectorAll !== 'function') return;
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        const key = el.getAttribute('data-i18n');
+        if (key) el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-html');
+        if (key) el.innerHTML = t(key);
+      });
+      document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-title');
+        if (key) el.title = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.placeholder = t(key);
+      });
+    }
+
+    function updateScopeUiTexts() {
+      const purgeBtn = document.getElementById('purge-btn');
+      const cutoffLabel = document.getElementById('cutoff-scope-label');
+      if (currentScope === 'conversation') {
+        if (purgeBtn) {
+          purgeBtn.innerText = t('purgeConvBtn');
+          purgeBtn.title = t('purgeConvTip');
+        }
+        if (cutoffLabel) cutoffLabel.innerText = t('cutoffConvLabel');
+      } else if (currentScope === 'app') {
+        if (purgeBtn) {
+          purgeBtn.innerText = t('purgeAppBtn');
+          purgeBtn.title = t('purgeAppTip');
+        }
+        if (cutoffLabel) cutoffLabel.innerText = t('cutoffAppLabel');
+      } else {
+        if (purgeBtn) {
+          purgeBtn.innerText = t('purgeLifetimeBtn');
+          purgeBtn.title = t('purgeLifetimeTip');
+        }
+        if (cutoffLabel) cutoffLabel.innerText = t('cutoffLifetimeLabel');
+      }
+
+      const scopeName =
+        currentScope === 'conversation'
+          ? t('scopeConv')
+          : currentScope === 'app'
+            ? t('scopeApp')
+            : t('scopeLifetime');
+      const explainEl = document.getElementById('exempt-scope-explain');
+      if (explainEl) {
+        explainEl.innerHTML = t('scopeExplainHtml', { scope: escapeHtml(scopeName) });
+      } else {
+        const scopeNote = document.getElementById('exempt-scope-note');
+        if (scopeNote) scopeNote.innerText = scopeName;
+      }
+    }
+
+    function renderTelemetryBanner() {
+      const srcEl = document.getElementById('telemetry-source');
+      const updEl = document.getElementById('last-updated-text');
+      if (cachedDisconnectedErr) {
+        if (updEl) updEl.innerText = t('errorPrefix', { msg: cachedDisconnectedErr });
+        if (srcEl) {
+          srcEl.innerHTML = `${escapeHtml(t('showingStatsFor'))} <span class="text-err">${escapeHtml(t('disconnected'))}</span>`;
+        }
+        return;
+      }
+      if (updEl) {
+        updEl.innerText = cachedLastUpdatedDate
+          ? t('updatedAt', { t: cachedLastUpdatedDate.toLocaleTimeString() })
+          : t('updating');
+      }
+      let scopeLabel = t('scopeBannerConv');
+      if (currentScope === 'app') {
+        const bootStr = cachedStats?.appStartTime
+          ? new Date(cachedStats.appStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '';
+        scopeLabel = bootStr
+          ? `${t('scopeBannerApp')} (${t('scopeBannerSince', { t: bootStr })})`
+          : t('scopeBannerApp');
+      } else if (currentScope === 'lifetime') {
+        scopeLabel = t('scopeBannerLifetime');
+      } else if (cachedConvId) {
+        scopeLabel = `${t('scopeBannerConv')} (${cachedConvId.slice(0, 8)}...)`;
+      }
+      if (srcEl) {
+        srcEl.innerHTML = `
+          ${escapeHtml(t('showingStatsFor'))} <span class="telemetry-source-val">${escapeHtml(scopeLabel)}</span>
+        `;
+      }
+    }
+
+    function renderHandoffMeta() {
+      const metaEl = document.getElementById('kv-handoff-meta');
+      if (!metaEl || !cachedHandoffData) return;
+      const sizeLabel = formatBytes(Number(cachedHandoffData.bytes || 0));
+      const truncTag = cachedHandoffData.truncated ? ` · ${t('handoffTruncated')}` : '';
+      const sumPart = cachedHandoffData.summary ? ` · ${cachedHandoffData.summary}` : '';
+      metaEl.textContent = `${sizeLabel}${truncTag}${sumPart}`;
+    }
+
+    function setLanguage(lang) {
+      const next = lang === 'zh' ? 'zh' : 'en';
+      currentLang = next;
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+          localStorage.setItem(LANG_STORAGE_KEY, next);
+        }
+      } catch {}
+      applyLanguageUi();
+    }
+
+    function applyLanguageUi() {
+      updateLangButtons();
+      applyStaticTranslations();
+      updateActiveBadge(isProtectionPaused);
+      updateScopeUiTexts();
+      updateHandoffButtonStyle(cachedCompactAdvice);
+      renderTelemetryBanner();
+      if (cachedStats) {
+        updateCutoffDropdown(cachedStats);
+        updateExemptionsList(cachedStats);
+        updateFeaturePill('toggle-cli-filter-btn', t('cliFilterLabel'), cachedStats.cliFilterEnabled !== false);
+        updateFeaturePill('toggle-read-dedup-btn', t('readDedupLabel'), cachedStats.readDedupEnabled !== false);
+        renderGhostEfficiency(cachedStats.ghost);
+        if (cachedStats.sandboxCapBytes) {
+          const capEl = document.getElementById('sandbox-cap');
+          if (capEl) capEl.innerText = t('capFormat', { size: formatBytes(cachedStats.sandboxCapBytes) });
+        }
+        const totalRaw = Number(cachedStats.totalRawBytes || 0);
+        const totalRet = Number(cachedStats.totalReturnedBytes || 0);
+        const keptOut = Number(cachedStats.keptOutBytes !== undefined ? cachedStats.keptOutBytes : Math.max(0, totalRaw - totalRet));
+        const rawRate = totalRaw > 0 ? ((keptOut / totalRaw) * 100) : Number(cachedStats.savingsPercent || 0);
+        const rateStr = rawRate.toFixed(1) + '%';
+        const sources = Number(cachedStats.sourcesCount || 0);
+        const srcCntEl = document.getElementById('sources-count');
+        if (srcCntEl) srcCntEl.innerText = sources === 1 ? t('inSourcesOne') : t('inSourcesMany', { n: sources });
+        const badgeEl = document.getElementById('comparison-badge');
+        if (badgeEl) badgeEl.innerText = t('pctSaved', { rate: totalRaw > 0 || rawRate > 0 ? rateStr : '0.0%' });
+      } else {
+        const cliBtn = document.getElementById('toggle-cli-filter-btn');
+        const dedupBtn = document.getElementById('toggle-read-dedup-btn');
+        updateFeaturePill('toggle-cli-filter-btn', t('cliFilterLabel'), cliBtn?.dataset?.enabled !== '0');
+        updateFeaturePill('toggle-read-dedup-btn', t('readDedupLabel'), dedupBtn?.dataset?.enabled !== '0');
+      }
+      if (cachedDoctor) {
+        const docEl = document.getElementById('doctor-status');
+        if (docEl && cachedDoctor.status) {
+          docEl.innerText = cachedDoctor.status === 'HEALTHY' ? t('statusHealthy') : cachedDoctor.status;
+        }
+      } else {
+        const docEl = document.getElementById('doctor-status');
+        if (docEl && (docEl.innerText === 'HEALTHY' || docEl.innerText === '健康')) {
+          docEl.innerText = t('statusHealthy');
+        }
+      }
+      if (cachedResume) {
+        renderRecentSourcesAndEvents(cachedResume);
+      }
+      if (cachedKv) {
+        renderKvCacheCard(cachedKv);
+      } else if (kvTtlState) {
+        renderLocalTtlCountdown();
+      }
+      if (cachedHandoffData) {
+        renderHandoffMeta();
+      }
+      const previewEl = document.getElementById('kv-handoff-preview');
+      if (previewEl && lastHandoffMarkdown) {
+        previewEl.textContent = lastHandoffMarkdown;
+      }
+    }
+
+    function updateActiveBadge(isPaused) {
+      isProtectionPaused = Boolean(isPaused);
+      const btn = document.getElementById('toggle-active-btn');
+      const dot = document.getElementById('active-dot');
+      const text = document.getElementById('active-text');
+      if (!btn || !dot || !text) return;
+
+      if (isProtectionPaused) {
+        btn.className = 'status-btn is-paused';
+        btn.title = t('pausedTip');
+        dot.className = 'status-dot is-paused';
+        text.innerText = t('pausedText');
+      } else {
+        btn.className = 'status-btn is-active';
+        btn.title = t('activeTip');
+        dot.className = 'status-dot is-active';
+        text.innerText = t('activeText');
+      }
+    }
+
+    async function toggleActiveState() {
+      ++refreshSeq;
+      const mutScope = currentScope;
+      const prevPaused = isProtectionPaused;
+      const nextPaused = !prevPaused;
+      updateActiveBadge(nextPaused);
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+
+        const res = await apiFetch('/api/toggle-active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: mutScope, conversationId: convId, paused: nextPaused })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (currentScope === mutScope && data && data.isPaused !== undefined) {
+          updateActiveBadge(data.isPaused);
+        }
+      } catch (e) {
+        console.error('Failed to toggle active state', e);
+        if (currentScope === mutScope) updateActiveBadge(prevPaused);
+      }
+    }
+
+    function setScope(scope) {
+      currentScope = scope;
+      const convBtn = document.getElementById('scope-conv-btn');
+      const appBtn = document.getElementById('scope-app-btn');
+      const lifetimeBtn = document.getElementById('scope-lifetime-btn');
+
+      if (convBtn) convBtn.className = scope === 'conversation' ? 'seg-btn is-active' : 'seg-btn';
+      if (appBtn) appBtn.className = scope === 'app' ? 'seg-btn is-active' : 'seg-btn';
+      if (lifetimeBtn) lifetimeBtn.className = scope === 'lifetime' ? 'seg-btn is-active' : 'seg-btn';
+
+      updateScopeUiTexts();
+
+      if (cachedStats) {
+        updateCutoffDropdown(cachedStats);
+        updateExemptionsList(cachedStats);
+      }
+
+      cachedHandoffData = null;
+      lastHandoffMarkdown = '';
+      ++handoffFetchSeq;
+      if (handoffDrawerOpen) {
+        loadHandoffBrief();
+      } else {
+        const previewEl = document.getElementById('kv-handoff-preview');
+        const metaEl = document.getElementById('kv-handoff-meta');
+        if (previewEl) previewEl.textContent = t('handoffPlaceholder');
+        if (metaEl) metaEl.textContent = '--';
+      }
+
+      refreshData(true);
+    }
+
+    function calculateMaxLineRange(bytes) {
+      const b = Number(bytes || 0);
+      if (b <= 0) return 0;
+      return Math.min(800, Math.max(50, Math.round(b / 40)));
+    }
+
+    function formatBytes(bytes) {
+      const b = Number(bytes || 0);
+      if (b <= 0) return "0 B";
+      if (b < 1024) return b + " B";
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+      return (b / (1024 * 1024)).toFixed(2) + " MB";
+    }
+
+    function escapeHtml(val) {
+      return String(val ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function getCsrfToken() {
+      return document.querySelector('meta[name="agy-dart-token"]')?.getAttribute('content') || '';
+    }
+
+    async function apiFetch(path, options = {}) {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const csrfToken = getCsrfToken();
+
+      const finalUrl = path;
+
+      const headers = new Headers(options.headers || {});
+      if (token && !headers.has('X-Sidecar-Token')) {
+        headers.set('X-Sidecar-Token', token);
+      }
+      if (csrfToken && !headers.has('X-Agy-Dart-Token')) {
+        headers.set('X-Agy-Dart-Token', csrfToken);
+      }
+      const method = (options.method || 'GET').toUpperCase();
+      let body = options.body;
+      if (method === 'POST') {
+        if (!headers.has('Content-Type')) {
+          headers.set('Content-Type', 'application/json');
+        }
+        if (body === undefined) {
+          body = '{}';
+        }
+      }
+
+      const fetchOpts = { ...options, method, headers };
+      if (body !== undefined) fetchOpts.body = body;
+
+      if (window.sidecar && typeof window.sidecar.fetch === 'function') {
+        return window.sidecar.fetch(finalUrl, fetchOpts);
+      }
+      return fetch(finalUrl, fetchOpts);
+    }
+
+    function renderGateReadCutoff(activeCutoff, s) {
+      const gateReadCutoff = document.getElementById('gate-read-cutoff');
+      if (!gateReadCutoff) return;
+      const guardMode = (s && s.readGuardMode) || 'soft';
+      if (activeCutoff === 0 || guardMode === 'off') {
+        gateReadCutoff.innerText = t('gateReadDisabled');
+      } else {
+        const fmtTier = (b) => {
+          const n = Number(b || 0);
+          if (n <= 0) return 'off';
+          return n % 1024 === 0 ? `${n / 1024} KB` : formatBytes(n);
+        };
+        const maxLines = calculateMaxLineRange(activeCutoff);
+        const noiseStr = fmtTier(s && s.noiseMaxReadBytes !== undefined ? s.noiseMaxReadBytes : 16384);
+        const reviewStr = fmtTier(s && s.reviewMaxReadBytes !== undefined ? s.reviewMaxReadBytes : 131072);
+        const key = guardMode === 'strict' ? 'gateReadStrict' : 'gateReadEnabled';
+        gateReadCutoff.innerText = t(key, { size: formatBytes(activeCutoff), lines: maxLines, noise: noiseStr, review: reviewStr });
+      }
+    }
+
+    function updateCutoffDropdown(s) {
+      const cutoffSelect = document.getElementById('cutoff-select');
+      const DEFAULT_CUTOFF_VAL = 46080;
+      let activeCutoff = DEFAULT_CUTOFF_VAL;
+      if (currentScope === 'lifetime') {
+        activeCutoff = s.globalCutoffBytes !== undefined && s.globalCutoffBytes !== null ? s.globalCutoffBytes : DEFAULT_CUTOFF_VAL;
+      } else if (currentScope === 'app') {
+        activeCutoff = s.appCutoffBytes !== undefined && s.appCutoffBytes !== null ? s.appCutoffBytes : (s.globalCutoffBytes ?? DEFAULT_CUTOFF_VAL);
+      } else {
+        activeCutoff = s.conversationCutoffBytes !== undefined && s.conversationCutoffBytes !== null ? s.conversationCutoffBytes : (s.cutoffBytes ?? DEFAULT_CUTOFF_VAL);
+      }
+
+      const targetVal = String(activeCutoff);
+      let matched = false;
+      const existingCustom = typeof cutoffSelect.querySelector === 'function'
+        ? cutoffSelect.querySelector('option[data-custom-cutoff="1"]')
+        : null;
+      for (const opt of cutoffSelect.options) {
+        if (opt.value === targetVal && !(opt.dataset && opt.dataset.customCutoff === '1')) {
+          cutoffSelect.value = targetVal;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) {
+        if (existingCustom && typeof cutoffSelect.removeChild === 'function') {
+          try { cutoffSelect.removeChild(existingCustom); } catch {}
+        }
+      } else if (targetVal === '0') {
+        cutoffSelect.value = '0';
+      } else if (typeof document.createElement === 'function' && typeof cutoffSelect.appendChild === 'function') {
+        const customOpt = existingCustom || document.createElement('option');
+        customOpt.value = targetVal;
+        customOpt.textContent = `${formatBytes(activeCutoff)} (custom)`;
+        if (typeof customOpt.setAttribute === 'function') customOpt.setAttribute('data-custom-cutoff', '1');
+        if (customOpt.dataset) customOpt.dataset.customCutoff = '1';
+        if (!existingCustom) {
+          cutoffSelect.appendChild(customOpt);
+          if (Array.isArray(cutoffSelect.options) && !cutoffSelect.options.includes(customOpt)) {
+            cutoffSelect.options.push(customOpt);
+          }
+        }
+        cutoffSelect.value = targetVal;
+      } else {
+        cutoffSelect.value = targetVal;
+      }
+      if (cutoffSelect.dataset) cutoffSelect.dataset.lastConfirmedCutoff = cutoffSelect.value;
+
+      renderGateReadCutoff(activeCutoff, s);
+    }
+
+    async function changeCutoff(newVal) {
+      ++refreshSeq;
+      const mutScope = currentScope;
+      const cutoffSelect = document.getElementById('cutoff-select');
+      const prevSelectVal = cutoffSelect ? (cutoffSelect.dataset?.lastConfirmedCutoff ?? '46080') : null;
+      const prevStatsSnapshot = cachedStats ? { ...cachedStats } : null;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+        const cutoffBytes = newVal === '0' || newVal === 0 ? 0 : parseInt(newVal, 10);
+
+        if (cutoffSelect) cutoffSelect.value = String(cutoffBytes);
+        renderGateReadCutoff(cutoffBytes, cachedStats);
+        if (cachedStats) {
+          if (mutScope === 'lifetime') {
+            cachedStats.globalCutoffBytes = cutoffBytes;
+            cachedStats.appCutoffBytes = cutoffBytes;
+            if (!cachedStats.hasConversationCutoffOverride) {
+              cachedStats.conversationCutoffBytes = cutoffBytes;
+              cachedStats.cutoffBytes = cutoffBytes;
+            }
+          } else if (mutScope === 'app') {
+            cachedStats.appCutoffBytes = cutoffBytes;
+            cachedStats.hasAppCutoffOverride = true;
+          } else {
+            cachedStats.conversationCutoffBytes = cutoffBytes;
+            cachedStats.cutoffBytes = cutoffBytes;
+            cachedStats.hasConversationCutoffOverride = true;
+          }
+        }
+
+        const res = await apiFetch('/api/cutoff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cutoff: cutoffBytes, scope: mutScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const respData = await res.json().catch(() => null);
+        if (respData && cachedStats) {
+          if (respData.globalCutoffBytes !== undefined) cachedStats.globalCutoffBytes = respData.globalCutoffBytes;
+          if (respData.appCutoffBytes !== undefined) cachedStats.appCutoffBytes = respData.appCutoffBytes;
+          if (respData.conversationCutoffBytes !== undefined) cachedStats.conversationCutoffBytes = respData.conversationCutoffBytes;
+        }
+        if (currentScope === mutScope && cutoffSelect && cutoffSelect.dataset) cutoffSelect.dataset.lastConfirmedCutoff = cutoffSelect.value;
+        refreshData(true);
+      } catch (err) {
+        console.error("Failed to update cutoff:", err);
+        cachedStats = prevStatsSnapshot;
+        if (currentScope === mutScope) {
+          if (cachedStats) {
+            updateCutoffDropdown(cachedStats);
+          } else if (cutoffSelect && prevSelectVal !== null) {
+            cutoffSelect.value = prevSelectVal;
+            const restoredBytes = prevSelectVal === '0' ? 0 : (parseInt(prevSelectVal, 10) || 46080);
+            updateCutoffDropdown({ cutoffBytes: restoredBytes, appCutoffBytes: restoredBytes, globalCutoffBytes: restoredBytes, conversationCutoffBytes: restoredBytes });
+          }
+        }
+      }
+    }
+
+    const DEFAULT_CATEGORIES_META = [
+      { id: 'images', name: 'Images', extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.psd'] },
+      { id: 'documents', name: 'Documents', extensions: ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.odt', '.rtf'] },
+      { id: 'code', name: 'Source Code', extensions: ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.rs', '.go', '.java', '.c', '.cpp', '.h', '.cs', '.html', '.css', '.yaml', '.yml', '.sh', '.ps1'] },
+      { id: 'models3d', name: '3D Models', extensions: ['.blend', '.fbx', '.obj', '.gltf', '.glb', '.stl', '.dae', '.3ds', '.step', '.iges'] },
+      { id: 'music', name: 'Music', extensions: ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma', '.midi'] },
+      { id: 'video', name: 'Video', extensions: ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v'] },
+      { id: 'archives', name: 'Archives', extensions: ['.zip', '.tar', '.gz', '.7z', '.rar', '.wasm'] }
+    ];
+
+    const DEFAULT_ACTIVE_CATEGORIES = ['images', 'documents', 'models3d', 'music', 'video', 'archives'];
+
+    function getActiveCategories(s) {
+      if (!s) return [...DEFAULT_ACTIVE_CATEGORIES];
+      let list = null;
+      if (currentScope === 'lifetime') {
+        list = s.globalExemptCategories;
+      } else if (currentScope === 'app') {
+        list = s.appExemptCategories || s.globalExemptCategories;
+      } else {
+        list = s.conversationExemptCategories || s.exemptCategories;
+      }
+      return Array.isArray(list) ? list : [...DEFAULT_ACTIVE_CATEGORIES];
+    }
+
+    function setActiveCategories(s, cats, scope = currentScope) {
+      if (!s) return;
+      if (scope === currentScope) s.exemptCategories = cats;
+      if (scope === 'lifetime') {
+        s.globalExemptCategories = cats;
+      } else if (scope === 'app') {
+        s.appExemptCategories = cats;
+      } else {
+        s.conversationExemptCategories = cats;
+      }
+    }
+
+    function updateExemptionsList(s) {
+      const categoriesContainer = document.getElementById('category-toggles');
+      const catSummary = document.getElementById('category-summary');
+      const categoriesList = s && s.fileCategories && s.fileCategories.length ? s.fileCategories : DEFAULT_CATEGORIES_META;
+      const activeCats = getActiveCategories(s);
+
+      if (categoriesContainer) {
+        categoriesContainer.innerHTML = categoriesList.map(cat => {
+          const isActive = activeCats.includes(cat.id);
+          const extCount = cat.extensions ? cat.extensions.length : 0;
+          const extSample = cat.extensions ? cat.extensions.slice(0, 6).join(', ') + (cat.extensions.length > 6 ? ', ...' : '') : '';
+          const localizedName = tCat(cat.id, cat.name);
+          const tooltip = escapeHtml(t('catTip', {
+            name: localizedName,
+            count: extCount,
+            sample: extSample,
+            action: isActive ? t('actionDisable') : t('actionEnable')
+          }));
+          const safeId = escapeHtml(cat.id);
+          const safeName = escapeHtml(localizedName);
+
+          return `
+            <button data-cat="${safeId}" onclick="toggleCategory(this.dataset.cat)"
+                    class="toggle-chip ${isActive ? 'is-on' : ''}"
+                    title="${tooltip}">
+              <span class="toggle-chip-dot"></span>
+              <span>${safeName}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      if (catSummary) {
+        catSummary.innerText = t('catSummary', { active: activeCats.length, total: categoriesList.length });
+      }
+
+      const tagsContainer = document.getElementById('exempt-tags');
+      const customCount = document.getElementById('custom-count');
+      let customList = [];
+      if (s) {
+        if (currentScope === 'lifetime') {
+          customList = s.globalCustomExtensions || [];
+        } else if (currentScope === 'app') {
+          customList = s.appCustomExtensions || s.globalCustomExtensions || [];
+        } else {
+          customList = s.conversationCustomExtensions || s.customExtensions || [];
+        }
+      }
+
+      if (tagsContainer) {
+        if (customList && customList.length > 0) {
+          tagsContainer.innerHTML = customList.map(ext => {
+            const safeExt = escapeHtml(ext);
+            return `
+            <span class="ext-chip">
+              <span>${safeExt}</span>
+              <button data-ext="${safeExt}" onclick="removeExemption(this.dataset.ext)" class="ext-remove" title="${escapeHtml(t('removeCustomTip'))}">×</button>
+            </span>
+          `;
+          }).join('');
+        } else {
+          tagsContainer.innerHTML = `<span class="muted-note">${escapeHtml(t('noCustomExt'))}</span>`;
+        }
+      }
+
+      if (customCount) {
+        customCount.innerText = t('customCount', { n: customList.length });
+      }
+    }
+
+    async function toggleCategory(categoryId) {
+      ++refreshSeq;
+      const mutScope = currentScope;
+      if (!cachedStats) cachedStats = {};
+      const activeCats = getActiveCategories(cachedStats);
+      const isCurrentlyActive = activeCats.includes(categoryId);
+      const nextEnabled = !isCurrentlyActive;
+      const nextActive = isCurrentlyActive
+        ? activeCats.filter(c => c !== categoryId)
+        : [...activeCats, categoryId];
+
+      setActiveCategories(cachedStats, nextActive, mutScope);
+      updateExemptionsList(cachedStats);
+
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+      try {
+        const res = await apiFetch('/api/exemptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'toggleCategory', category: categoryId, enabled: nextEnabled, scope: mutScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data && data.exemptCategories) {
+          setActiveCategories(cachedStats, data.exemptCategories, mutScope);
+          if (currentScope === mutScope) updateExemptionsList(cachedStats);
+        }
+      } catch (err) {
+        console.error("Failed to toggle category:", err);
+        setActiveCategories(cachedStats, activeCats, mutScope);
+        if (currentScope === mutScope) {
+          updateExemptionsList(cachedStats);
+        }
+      }
+    }
+
+    async function addExemption() {
+      const input = document.getElementById('new-exempt-input');
+      const val = input.value.trim();
+      if (!val) return;
+      const cleanExt = val.startsWith('*.') ? val.slice(1) : val;
+      if (!/^\.?[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$/.test(cleanExt)) {
+        alert(t('alertAddExemptFail', { msg: 'Invalid extension format (e.g. .log or .csv)' }));
+        return;
+      }
+
+      ++refreshSeq;
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+
+      try {
+        const res = await apiFetch('/api/exemptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', ext: cleanExt, scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        input.value = '';
+        refreshData(true);
+      } catch (err) {
+        alert(t('alertAddExemptFail', { msg: err.message }));
+      }
+    }
+
+    async function removeExemption(ext) {
+      ++refreshSeq;
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+
+      try {
+        const res = await apiFetch('/api/exemptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove', ext, scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        refreshData(true);
+      } catch (err) {
+        alert(t('alertRemoveExemptFail', { msg: err.message }));
+      }
+    }
+
+    async function resetExemptions() {
+      if (!confirm(t('confirmResetExempt'))) return;
+      ++refreshSeq;
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+
+      try {
+        const res = await apiFetch('/api/exemptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset', scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        refreshData(true);
+      } catch (err) {
+        alert(t('alertResetExemptFail', { msg: err.message }));
+      }
+    }
+
+    function renderRecentSourcesAndEvents(r) {
+      if (!r) return;
+      const sourcesDiv = document.getElementById('sources-list');
+      if (!sourcesDiv) return;
+
+      function formatItemPath(p) {
+        if (!p) return "";
+        const normalized = p.replace(/\\/g, "/");
+        const parts = normalized.split("/").filter(Boolean);
+        if (parts.length <= 3) return parts.join("/");
+        return parts.slice(-3).join("/");
+      }
+
+      const items = [];
+      if (r.recentEvents && r.recentEvents.length > 0) {
+        const guardEvents = r.recentEvents.filter(ev => ev.kind === 'interception' || ev.kind === 'cli_filter' || ev.kind === 'dedup');
+        for (const ev of guardEvents) {
+          const displayPath = escapeHtml(formatItemPath(ev.path || ev.tool));
+          const rawTitle = escapeHtml(`${ev.path || ev.tool}`);
+          const saved = Math.max(0, Number(ev.sandbox_bytes || 0) - Number(ev.returned_bytes || 0));
+          const safeAgent = escapeHtml(ev.agent || '');
+          const agentBadge = (ev.agent && ev.agent !== 'antigravity' && ev.agent !== 'primary')
+            ? `<span class="agent-tag" title="${escapeHtml(t('triggeredBySubagent', { agent: ev.agent }))}">${safeAgent}</span>`
+            : '';
+          const isFilter = ev.kind === 'cli_filter';
+          const isDedup = ev.kind === 'dedup';
+          const dotCls = isFilter ? 'is-filter' : isDedup ? 'is-dedup' : 'is-block';
+          const labelCls = isFilter ? 'source-action-filter' : isDedup ? 'source-action-dedup' : 'source-action-block';
+          const actionText = escapeHtml(
+            isFilter
+              ? t('filteredPrefix', { key: ev.key || 'cli' })
+              : isDedup
+                ? t('dedupPrefix', { tool: ev.tool })
+                : t('blockedPrefix', { tool: ev.tool })
+          );
+          items.push(`
+            <div class="source-row" title="${actionText} ${rawTitle}">
+              <div class="source-left">
+                <span class="source-dot ${dotCls}"></span>
+                ${agentBadge}
+                <span class="truncate">
+                  <span class="${labelCls}">${actionText}</span>
+                  <span>${displayPath}</span>
+                </span>
+              </div>
+              <div class="source-right">
+                <span class="${labelCls}">${formatBytes(saved)}</span>
+                <span class="muted-note">${escapeHtml(t('savedWord'))}</span>
+              </div>
+            </div>
+          `);
+        }
+      }
+
+      if (r.recentSources && r.recentSources.length > 0) {
+        for (const src of r.recentSources) {
+          const safeId = escapeHtml(src.id);
+          const safeLabel = escapeHtml(src.label);
+          const chunkCount = Number(src.chunk_count) || 0;
+          const bytesTotal = Number(src.bytes_total) || 0;
+          const chunkWord = chunkCount === 1 ? t('chunkOne') : t('chunkMany');
+          items.push(`
+            <div data-source-id="${safeId}" data-source-label="${safeLabel}" onclick="inspectSourceEl(this)"
+                 class="source-row is-clickable"
+                 title="${escapeHtml(t('clickToInspectSource', { label: src.label }))}">
+              <div class="source-left">
+                <span class="source-dot is-index"></span>
+                <span class="truncate">${safeLabel}</span>
+              </div>
+              <div class="source-right">
+                <span>${formatBytes(bytesTotal)}</span>
+                <span class="muted-note">(${chunkCount} ${escapeHtml(chunkWord)})</span>
+                <svg class="btn-icon muted-note" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+          `);
+        }
+      }
+
+      if (items.length > 0) {
+        sourcesDiv.innerHTML = items.join('');
+      } else {
+        sourcesDiv.innerHTML = `<div class="muted-note">${escapeHtml(t('noSourcesView'))}</div>`;
+      }
+    }
+
+    async function refreshData(manual = false) {
+      const reqSeq = ++refreshSeq;
+      const reqScope = currentScope;
+      const isStale = () => reqSeq !== refreshSeq || currentScope !== reqScope;
+      const refreshIcon = document.getElementById('refresh-icon');
+      if (manual && refreshIcon) refreshIcon.classList.add('spinning');
+
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+        cachedConvId = convId;
+
+        const statsRes = await apiFetch('/api/stats', {
+          method: 'POST',
+          body: JSON.stringify({ scope: reqScope, conversationId: convId })
+        });
+        if (!statsRes.ok) throw new Error(`Stats HTTP ${statsRes.status}`);
+        const s = await statsRes.json();
+        if (isStale()) return;
+        cachedStats = s;
+
+        updateCutoffDropdown(s);
+        updateExemptionsList(s);
+        if (s.isPaused !== undefined) {
+          updateActiveBadge(s.isPaused);
+        }
+        updateFeaturePill('toggle-cli-filter-btn', t('cliFilterLabel'), s.cliFilterEnabled !== false);
+        updateFeaturePill('toggle-read-dedup-btn', t('readDedupLabel'), s.readDedupEnabled !== false);
+        if (s.breakdown) {
+          const cdEl = document.getElementById('cli-dedup-counts');
+          if (cdEl) cdEl.innerText = `${Number(s.breakdown.cliFilters) || 0} / ${Number(s.breakdown.dedups) || 0}`;
+        }
+        renderGhostEfficiency(s.ghost);
+        if (s.version) {
+          const verEl = document.getElementById('dashboard-version');
+          if (verEl) verEl.innerText = s.version.startsWith('v') ? s.version : `v${s.version}`;
+        }
+
+        if (s.sandboxCapBytes) {
+          document.getElementById('sandbox-cap').innerText = t('capFormat', { size: formatBytes(s.sandboxCapBytes) });
+        }
+
+        const totalRaw = Number(s.totalRawBytes || 0);
+        const totalRet = Number(s.totalReturnedBytes || 0);
+        const keptOut = Number(s.keptOutBytes !== undefined ? s.keptOutBytes : Math.max(0, totalRaw - totalRet));
+        const rawRate = totalRaw > 0 ? ((keptOut / totalRaw) * 100) : Number(s.savingsPercent || 0);
+        const rateStr = rawRate.toFixed(1) + "%";
+        const tokensPreserved = Number(s.tokensKeptOut !== undefined ? s.tokensKeptOut : Math.round(keptOut / 4));
+        const chunks = Number(s.chunksCount || 0);
+        const sources = Number(s.sourcesCount || 0);
+
+        document.getElementById('reduction-rate').innerText = rateStr;
+        document.getElementById('tokens-preserved').innerText = "~" + tokensPreserved.toLocaleString();
+        document.getElementById('kept-out-kb').innerText = formatBytes(keptOut);
+        document.getElementById('total-raw').innerText = formatBytes(totalRaw);
+        document.getElementById('total-returned').innerText = formatBytes(totalRet);
+        document.getElementById('chunks-count').innerText = chunks;
+        document.getElementById('sources-count').innerText = sources === 1 ? t('inSourcesOne') : t('inSourcesMany', { n: sources });
+
+        const badgeEl = document.getElementById('comparison-badge');
+        const savedFillEl = document.getElementById('bar-saved-fill');
+        const usedFillEl = document.getElementById('bar-used-fill');
+
+        if (totalRaw > 0) {
+          const savedPct = Math.max(0, Math.min(100, rawRate));
+          const usedPct = Math.max(0, 100 - savedPct);
+
+          if (badgeEl) badgeEl.innerText = t('pctSaved', { rate: rateStr });
+          if (savedFillEl) savedFillEl.style.width = `${savedPct}%`;
+          if (usedFillEl) usedFillEl.style.width = `${usedPct}%`;
+        } else {
+          const savedPct = Math.max(0, Math.min(100, rawRate));
+          if (badgeEl) badgeEl.innerText = t('pctSaved', { rate: rawRate > 0 ? rateStr : '0.0%' });
+          if (savedFillEl) savedFillEl.style.width = `${savedPct}%`;
+          if (usedFillEl) usedFillEl.style.width = '0%';
+        }
+
+        try {
+          const docRes = await apiFetch('/api/doctor', { method: 'POST', body: '{}' });
+          if (isStale()) return;
+          if (docRes.ok) {
+            const d = await docRes.json();
+            if (isStale()) return;
+            cachedDoctor = d;
+            if (d.status) {
+              document.getElementById('doctor-status').innerText = d.status === 'HEALTHY' ? t('statusHealthy') : d.status;
+            }
+            const dbSizeEl = document.getElementById('db-size-label');
+            if (dbSizeEl && d.dbSizeBytes !== undefined) {
+              const totalDb = Number(d.dbSizeBytes || 0) + Number(d.walSizeBytes || 0);
+              dbSizeEl.innerText = `SQLite (${formatBytes(totalDb)})`;
+            }
+          }
+        } catch {}
+
+        try {
+          const kvRes = await apiFetch('/api/cache-diag', {
+            method: 'POST',
+            body: JSON.stringify({ scope: reqScope, conversationId: convId })
+          });
+          if (isStale()) return;
+          if (kvRes.ok) {
+            const kv = await kvRes.json();
+            if (isStale()) return;
+            cachedKv = kv;
+            renderKvCacheCard(kv);
+          }
+        } catch {}
+
+        const resumeRes = await apiFetch('/api/resume', {
+          method: 'POST',
+          body: JSON.stringify({ scope: reqScope, conversationId: convId })
+        });
+        if (isStale()) return;
+        if (resumeRes.ok) {
+          const r = await resumeRes.json();
+          if (isStale()) return;
+          cachedResume = r;
+          renderRecentSourcesAndEvents(r);
+        }
+
+        cachedDisconnectedErr = null;
+        cachedLastUpdatedDate = new Date();
+        renderTelemetryBanner();
+
+      } catch (err) {
+        if (isStale()) return;
+        console.error("Telemetry refresh failed:", err);
+        cachedDisconnectedErr = err.message;
+        renderTelemetryBanner();
+      } finally {
+        if (refreshIcon && reqSeq === refreshSeq) {
+          setTimeout(() => refreshIcon.classList.remove('spinning'), 400);
+        }
+      }
+    }
+
+    function inspectSourceEl(el) {
+      if (!el) return;
+      return inspectSource(el.dataset.sourceId || '', encodeURIComponent(el.dataset.sourceLabel || ''));
+    }
+
+    async function inspectSource(sourceId, encodedLabel) {
+      const label = decodeURIComponent(encodedLabel || '');
+      const input = document.getElementById('search-input');
+      if (input) input.value = label;
+
+      const resultsDiv = document.getElementById('search-results');
+      resultsDiv.innerHTML = `<div class="muted-note">${escapeHtml(t('loadingChunks'))}</div>`;
+
+      try {
+        const res = await apiFetch('/api/source-chunks', {
+          method: 'POST',
+          body: JSON.stringify({ sourceId })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chunks && data.chunks.length > 0) {
+            resultsDiv.innerHTML = data.chunks.map((ch, idx) => {
+              const bodyStr = typeof ch?.body === 'string' ? ch.body : String(ch?.body ?? '');
+              return `
+              <div class="result-item">
+                <div class="result-head">
+                  <span class="result-title truncate">${escapeHtml(ch?.title || label)} [${escapeHtml(t('chunkLabel', { i: idx + 1, total: data.chunks.length }))}]</span>
+                  <span class="result-badge">${bodyStr.length} B</span>
+                </div>
+                <div class="result-body">${escapeHtml(bodyStr.slice(0, 380))}${bodyStr.length > 380 ? '...' : ''}</div>
+              </div>
+            `;
+            }).join('');
+            const card = document.getElementById('search-inspector-card');
+            if (card) card.scrollIntoView({ behavior: 'smooth' });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load source chunks:", err);
+      }
+
+      executeSearch();
+    }
+
+    async function executeSearch() {
+      const q = document.getElementById('search-input').value.trim();
+      if (!q) return;
+
+      const resultsDiv = document.getElementById('search-results');
+      resultsDiv.innerHTML = `<div class="muted-note">${escapeHtml(t('searchingFts'))}</div>`;
+
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+        const res = await apiFetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q, scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (data.hits && data.hits.length > 0) {
+          resultsDiv.innerHTML = data.hits.map(h => `
+            <div class="result-item">
+              <div class="result-head">
+                <span class="result-title truncate">${escapeHtml(h.title || h.sourceId)}</span>
+                <span class="result-badge">RRF: ${Number(h.rrfScore) || 0}</span>
+              </div>
+              <div class="result-body">${escapeHtml((h.snippet || '').slice(0, 260))}...</div>
+            </div>
+          `).join('');
+        } else {
+          resultsDiv.innerHTML = `<div class="muted-note">${escapeHtml(t('noMatchingChunks'))}</div>`;
+        }
+      } catch (err) {
+        resultsDiv.innerHTML = `<div class="muted-note val-danger">${escapeHtml(t('searchFailed', { msg: err.message }))}</div>`;
+      }
+    }
+
+    function updateFeaturePill(elId, label, enabled) {
+      const btn = document.getElementById(elId);
+      if (!btn) return;
+      btn.dataset.enabled = enabled ? '1' : '0';
+      const sep = currentLang === 'zh' ? '：' : ': ';
+      btn.className = enabled ? 'toggle-chip is-on' : 'toggle-chip';
+      btn.innerText = `${label}${sep}${enabled ? t('stateOn') : t('stateOff')}`;
+    }
+
+    async function toggleCliFilter() {
+      ++refreshSeq;
+      const mutScope = currentScope;
+      const btn = document.getElementById('toggle-cli-filter-btn');
+      const prev = btn?.dataset.enabled === '1';
+      const next = !prev;
+      updateFeaturePill('toggle-cli-filter-btn', t('cliFilterLabel'), next);
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+      try {
+        const res = await apiFetch('/api/cli-filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: next, scope: mutScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        refreshData(false);
+      } catch (e) {
+        console.error(e);
+        if (currentScope === mutScope) updateFeaturePill('toggle-cli-filter-btn', t('cliFilterLabel'), prev);
+      }
+    }
+
+    async function toggleReadDedup() {
+      ++refreshSeq;
+      const mutScope = currentScope;
+      const btn = document.getElementById('toggle-read-dedup-btn');
+      const prev = btn?.dataset.enabled === '1';
+      const next = !prev;
+      updateFeaturePill('toggle-read-dedup-btn', t('readDedupLabel'), next);
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+      try {
+        const res = await apiFetch('/api/read-dedup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: next, scope: mutScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        refreshData(false);
+      } catch (e) {
+        console.error(e);
+        if (currentScope === mutScope) updateFeaturePill('toggle-read-dedup-btn', t('readDedupLabel'), prev);
+      }
+    }
+
+    function fmtSec(sec) {
+      if (sec === null || sec === undefined) return '--';
+      const s = Math.max(0, Math.round(sec));
+      if (s >= 3600) {
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+      }
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return m > 0 ? `${m}m ${r}s` : `${r}s`;
+    }
+
+    function fmtUsd(val) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n === 0) return '$0.00';
+      const abs = Math.abs(n);
+      const sign = n < 0 ? '-' : '';
+      if (abs < 0.01) return `${sign}$${abs.toFixed(4)}`;
+      return `${sign}$${abs.toFixed(2)}`;
+    }
+
+    function renderGhostEfficiency(ghost) {
+      const rowEl = document.getElementById('kv-ghost-row');
+      const effEl = document.getElementById('kv-ghost-efficiency');
+      const recEl = document.getElementById('kv-ghost-recalls');
+      const tipEl = document.getElementById('kv-ghost-recommendation');
+      if (!rowEl) return;
+      if (!ghost || !ghost.totalBlocked) {
+        rowEl.classList.add('hidden');
+        return;
+      }
+      rowEl.classList.remove('hidden');
+      const effPct = Math.round(Number(ghost.evictionEfficiency ?? 1) * 100);
+      if (effEl) {
+        effEl.innerText = t('guardEfficiency', { pct: effPct });
+        effEl.className = effPct < 65 ? 'val-warn' : 'val-ok';
+      }
+      if (recEl) {
+        recEl.innerText = t('guardRecalls', { rec: ghost.ghostRecalls || 0, tot: ghost.totalBlocked });
+      }
+      if (tipEl) {
+        if (ghost.recommendation) {
+          tipEl.innerText = ghost.recommendation;
+          tipEl.classList.remove('hidden');
+        } else {
+          tipEl.innerText = '';
+          tipEl.classList.add('hidden');
+        }
+      }
+    }
+
+    function updateHandoffButtonStyle(compactAdvice) {
+      cachedCompactAdvice = String(compactAdvice || 'none');
+      const btn = document.getElementById('kv-handoff-btn');
+      const cue = document.getElementById('kv-handoff-cue');
+      if (!btn) return;
+      const advice = cachedCompactAdvice;
+      if (advice === 'critical_compact') {
+        btn.className = 'btn btn-secondary btn-sm is-warn';
+        btn.title = t('handoffTipCritical');
+        if (cue) {
+          cue.textContent = t('handoffCueCompact');
+          cue.className = 'cue-tag';
+        }
+      } else if (advice === 'opportunistic_cold_compact') {
+        btn.className = 'btn btn-secondary btn-sm is-warn';
+        btn.title = t('handoffTipCold');
+        if (cue) {
+          cue.textContent = t('handoffCueCold');
+          cue.className = 'cue-tag';
+        }
+      } else {
+        btn.className = 'btn btn-secondary btn-sm';
+        btn.title = t('handoffTipDefault');
+        if (cue) {
+          cue.textContent = '';
+          cue.className = 'hidden';
+        }
+      }
+    }
+
+    function stopKvTtlTimer() {
+      if (kvTtlTimer !== null) {
+        clearInterval(kvTtlTimer);
+        kvTtlTimer = null;
+      }
+    }
+
+    function computeLocalTtlSnapshot(state, nowMs = Date.now()) {
+      if (!state || !Number.isFinite(state.lastPlannerMs) || !(state.cacheTtlSec > 0)) {
+        return null;
+      }
+      const safeNow = Number.isFinite(nowMs) ? nowMs : Date.now();
+      const offset = Number.isFinite(state.clockOffsetMs) ? state.clockOffsetMs : 0;
+      const estServerNow = safeNow + offset;
+      const elapsedExact = Math.max(0, (estServerNow - state.lastPlannerMs) / 1000);
+      const idleSeconds = Math.max(0, Math.round(elapsedExact));
+      const remainingExact = Math.max(0, state.cacheTtlSec - elapsedExact);
+      const remainingSec = Math.max(0, state.cacheTtlSec - idleSeconds);
+      const pct = Math.max(0, Math.min(100, (remainingExact / state.cacheTtlSec) * 100));
+      let ttlStatus = 'warm';
+      if (idleSeconds >= state.cacheTtlSec || remainingSec <= 0) ttlStatus = 'expired';
+      else if (remainingSec <= 60) ttlStatus = 'expiring';
+      let cacheTemperature = 'cold';
+      if (idleSeconds < Math.min(60, state.cacheTtlSec)) cacheTemperature = 'hot';
+      else if (idleSeconds < state.cacheTtlSec) cacheTemperature = 'warm';
+      return {
+        idleSeconds,
+        remainingSec,
+        cacheTtlSec: state.cacheTtlSec,
+        pct: Number(pct.toFixed(2)),
+        ttlStatus,
+        cacheTemperature
+      };
+    }
+
+    function renderLocalTtlCountdown() {
+      const rowEl = document.getElementById('kv-ttl-bar-row');
+      const labelEl = document.getElementById('kv-ttl-bar-label');
+      const textEl = document.getElementById('kv-ttl-bar-text');
+      const trackEl = document.getElementById('kv-ttl-bar-track');
+      const fillEl = document.getElementById('kv-ttl-bar-fill');
+      const ttlEl = document.getElementById('kv-ttl-badge');
+      const tempEl = document.getElementById('kv-temp-badge');
+
+      const snap = computeLocalTtlSnapshot(kvTtlState);
+      if (!snap || !kvTtlState) {
+        if (rowEl) rowEl.classList.add('hidden');
+        if (fillEl) fillEl.style.width = '0%';
+        stopKvTtlTimer();
+        return;
+      }
+
+      if (rowEl) rowEl.classList.remove('hidden');
+      const ttlSrcTag = kvTtlState.ttlSource && kvTtlState.ttlSource !== 'profile' ? ` (${kvTtlState.ttlSource})` : '';
+      if (labelEl) {
+        labelEl.textContent = `${t('ttlBarLabel')}${ttlSrcTag}`;
+      }
+
+      if (snap.ttlStatus === 'expired') {
+        if (fillEl) {
+          fillEl.style.width = '0%';
+          fillEl.className = 'ttl-fill is-expired';
+        }
+        if (trackEl) trackEl.className = 'ttl-track is-expired';
+        if (textEl) {
+          textEl.className = 'ttl-text-danger';
+          textEl.textContent = t('ttlExpiredBar', { total: fmtSec(snap.cacheTtlSec), idle: fmtSec(snap.idleSeconds) });
+        }
+        if (ttlEl) {
+          ttlEl.className = 'meta-tag is-danger';
+          ttlEl.textContent = t('ttlExpiredBadge', { idle: fmtSec(snap.idleSeconds) });
+        }
+      } else if (snap.ttlStatus === 'expiring') {
+        if (fillEl) {
+          fillEl.style.width = `${snap.pct}%`;
+          fillEl.className = 'ttl-fill is-expiring bg-amber-400';
+        }
+        if (trackEl) trackEl.className = 'ttl-track is-expiring';
+        if (textEl) {
+          textEl.className = 'ttl-text-warn';
+          textEl.textContent = t('ttlExpiringBar', { rem: fmtSec(snap.remainingSec), total: fmtSec(snap.cacheTtlSec) });
+        }
+        if (ttlEl) {
+          ttlEl.className = 'meta-tag is-warn';
+          ttlEl.textContent = t('ttlLeftBadge', { rem: fmtSec(snap.remainingSec) });
+        }
+      } else {
+        if (fillEl) {
+          fillEl.style.width = `${snap.pct}%`;
+          fillEl.className = 'ttl-fill';
+        }
+        if (trackEl) trackEl.className = 'ttl-track';
+        if (textEl) {
+          textEl.className = 'ttl-text-ok';
+          textEl.textContent = `${fmtSec(snap.remainingSec)} / ${fmtSec(snap.cacheTtlSec)}`;
+        }
+        if (ttlEl) {
+          ttlEl.className = 'meta-tag is-info';
+          ttlEl.textContent = t('ttlLeftBadge', { rem: fmtSec(snap.remainingSec) });
+        }
+      }
+
+      if (tempEl) {
+        if (snap.cacheTemperature === 'hot') {
+          tempEl.className = 'meta-tag is-ok';
+          tempEl.textContent = t('tempHot');
+        } else if (snap.cacheTemperature === 'warm') {
+          tempEl.className = 'meta-tag is-info';
+          tempEl.textContent = t('tempWarm');
+        } else {
+          tempEl.className = 'meta-tag';
+          tempEl.textContent = t('tempCold');
+        }
+      }
+
+      if (snap.ttlStatus === 'expired' && kvTtlState.compactAdvice !== 'critical_compact' && kvTtlState.currentContextTokens >= kvTtlState.coldCompactTokens) {
+        updateHandoffButtonStyle('opportunistic_cold_compact');
+      }
+    }
+
+    function syncKvTtlState(kv) {
+      const lastMs = kv && kv.lastPlannerAt ? Date.parse(kv.lastPlannerAt) : NaN;
+      const ttlSec = Number(kv?.cacheTtlSec);
+      const ctxTokens = Number(kv?.currentContextTokens || 0);
+      if (!kv || !kv.transcriptFound || !kv.turnsWithUsage || !Number.isFinite(lastMs) || !(ttlSec > 0) || ctxTokens < 4000) {
+        kvTtlState = null;
+        stopKvTtlTimer();
+        const rowEl = document.getElementById('kv-ttl-bar-row');
+        const fillEl = document.getElementById('kv-ttl-bar-fill');
+        if (rowEl) rowEl.classList.add('hidden');
+        if (fillEl) fillEl.style.width = '0%';
+        return;
+      }
+      const serverNow = Number(kv.serverNowMs);
+      let clockOffsetMs;
+      if (Number.isFinite(kv._clockOffsetMs)) {
+        clockOffsetMs = kv._clockOffsetMs;
+      } else {
+        clockOffsetMs = Number.isFinite(serverNow) && serverNow > 0 ? serverNow - Date.now() : 0;
+        kv._clockOffsetMs = clockOffsetMs;
+      }
+      kvTtlState = {
+        lastPlannerMs: lastMs,
+        cacheTtlSec: ttlSec,
+        clockOffsetMs,
+        currentContextTokens: ctxTokens,
+        coldCompactTokens: Number(kv.coldCompactTokens) > 0 ? Number(kv.coldCompactTokens) : 60000,
+        compactAdvice: kv.compactAdvice || 'none',
+        ttlSource: kv.ttlSource || 'profile',
+        maxWarmHitGapSec: kv.maxWarmHitGapSec ?? null
+      };
+      renderLocalTtlCountdown();
+      if (kvTtlTimer === null) {
+        kvTtlTimer = setInterval(renderLocalTtlCountdown, 1000);
+      }
+    }
+
+    async function loadHandoffBrief() {
+      const previewEl = document.getElementById('kv-handoff-preview');
+      const metaEl = document.getElementById('kv-handoff-meta');
+      const reqSeq = ++handoffFetchSeq;
+      if (metaEl) metaEl.textContent = t('handoffGenerating');
+      if (previewEl && !lastHandoffMarkdown) {
+        previewEl.textContent = t('handoffGeneratingBody');
+      }
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+        const res = await apiFetch('/api/handoff', {
+          method: 'POST',
+          body: JSON.stringify({ scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (reqSeq !== handoffFetchSeq) return;
+        cachedHandoffData = data;
+        lastHandoffMarkdown = typeof data.markdown === 'string' ? data.markdown : '';
+        if (previewEl) {
+          previewEl.textContent = lastHandoffMarkdown || t('handoffEmpty');
+        }
+        renderHandoffMeta();
+      } catch (err) {
+        if (reqSeq !== handoffFetchSeq) return;
+        cachedHandoffData = null;
+        lastHandoffMarkdown = '';
+        if (metaEl) metaEl.textContent = t('handoffError');
+        if (previewEl) previewEl.textContent = t('handoffFailBody', { msg: err?.message || String(err) });
+      }
+    }
+
+    function toggleHandoffDrawer(forceState) {
+      const drawer = document.getElementById('kv-handoff-drawer');
+      if (!drawer) return;
+      const nextOpen = typeof forceState === 'boolean' ? forceState : !handoffDrawerOpen;
+      handoffDrawerOpen = nextOpen;
+      if (handoffDrawerOpen) {
+        drawer.classList.remove('hidden');
+        loadHandoffBrief();
+        if (typeof drawer.scrollIntoView === 'function') {
+          drawer.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      } else {
+        drawer.classList.add('hidden');
+      }
+    }
+
+    async function copyHandoffBrief() {
+      const btn = document.getElementById('kv-handoff-copy-btn');
+      const text = lastHandoffMarkdown || '';
+      if (!text) return;
+      let copied = false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch {}
+      }
+      if (!copied) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+          copied = Boolean(document.execCommand('copy'));
+        } catch {
+          copied = false;
+        } finally {
+          document.body.removeChild(ta);
+        }
+      }
+      if (btn) {
+        btn.textContent = copied ? t('copiedBtn') : t('copyFailedBtn');
+        if (handoffCopyResetTimer !== null) clearTimeout(handoffCopyResetTimer);
+        handoffCopyResetTimer = setTimeout(() => {
+          btn.textContent = t('copyBriefBtn');
+          handoffCopyResetTimer = null;
+        }, 2000);
+      }
+    }
+
+    const KV_COMPOSITION_SEGMENTS = [
+      { key: 'thinking', label: 'Thinking', bgClass: 'seg-bg-thinking' },
+      { key: 'fileReads', label: 'File Reads', bgClass: 'seg-bg-fileReads' },
+      { key: 'toolResults', label: 'Tool Outputs', bgClass: 'seg-bg-toolResults' },
+      { key: 'assistant', label: 'Assistant', bgClass: 'seg-bg-assistant' },
+      { key: 'user', label: 'User', bgClass: 'seg-bg-user' },
+      { key: 'toolCalls', label: 'Tool Calls', bgClass: 'seg-bg-toolCalls' },
+      { key: 'media', label: 'Media', bgClass: 'seg-bg-media' }
+    ];
+
+    function fmtEstTokShort(tok) {
+      const n = Number(tok);
+      if (!Number.isFinite(n) || n <= 0) return '0';
+      if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
+      if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+      return String(Math.round(n));
+    }
+
+    function toFiniteNonNeg(val) {
+      if (val === null || val === undefined || val === '' || typeof val === 'boolean') return null;
+      const n = Number(val);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    }
+
+    function renderContextComposition(comp, sub) {
+      const rowEl = document.getElementById('kv-composition-row');
+      const labelEl = document.getElementById('kv-composition-label');
+      const totalEl = document.getElementById('kv-composition-total');
+      const barEl = document.getElementById('kv-composition-bar');
+      const legendEl = document.getElementById('kv-composition-legend');
+      const subBadgeEl = document.getElementById('kv-subagent-badge');
+
+      const rawTotal = comp ? toFiniteNonNeg(comp.totalEstTokens) : null;
+      const totalEstTokens = rawTotal !== null && rawTotal > 0 ? Math.round(rawTotal) : 0;
+
+      if (rowEl && barEl && legendEl) {
+        if (totalEstTokens <= 0) {
+          rowEl.classList.add('hidden');
+          barEl.innerHTML = '';
+          legendEl.innerHTML = '';
+          if (labelEl) labelEl.textContent = t('compTitle');
+          if (totalEl) totalEl.textContent = '--';
+        } else {
+          const activeSegs = [];
+          for (const seg of KV_COMPOSITION_SEGMENTS) {
+            const bucket = comp[seg.key];
+            const rawEstTok = bucket ? toFiniteNonNeg(bucket.estTokens) : null;
+            const estTok = rawEstTok !== null && rawEstTok > 0 ? Math.round(rawEstTok) : 0;
+            if (estTok <= 0) continue;
+            const exactPct = Math.max(0, Math.min(100, (estTok / totalEstTokens) * 100));
+            const explicitPct = bucket ? toFiniteNonNeg(bucket.pct) : null;
+            const rawPct = explicitPct !== null ? Math.min(100, explicitPct) : Number(exactPct.toFixed(1));
+            const rawMediaCnt = seg.key === 'media' ? toFiniteNonNeg(bucket?.mediaCount ?? comp.mediaCount) : null;
+            const mediaCnt = rawMediaCnt !== null ? Math.round(rawMediaCnt) : 0;
+            activeSegs.push({
+              ...seg,
+              label: tSeg(seg.key, seg.label),
+              estTokens: estTok,
+              widthPct: exactPct,
+              pct: rawPct,
+              mediaCount: mediaCnt
+            });
+          }
+
+          if (activeSegs.length === 0) {
+            rowEl.classList.add('hidden');
+            barEl.innerHTML = '';
+            legendEl.innerHTML = '';
+            if (labelEl) labelEl.textContent = t('compTitle');
+            if (totalEl) totalEl.textContent = '--';
+          } else {
+            rowEl.classList.remove('hidden');
+            const domSeg = KV_COMPOSITION_SEGMENTS.find((s) => s.key === comp.dominantCategory) || null;
+            const rawTotalBytes = toFiniteNonNeg(comp.totalBytes);
+            const safeTotalBytes = rawTotalBytes !== null ? Math.round(rawTotalBytes) : 0;
+            if (labelEl) {
+              labelEl.textContent = domSeg ? t('compTop', { name: tSeg(domSeg.key, domSeg.label) }) : t('compTitle');
+            }
+            if (totalEl) {
+              totalEl.textContent = t('estTokShort', { tok: fmtEstTokShort(totalEstTokens) });
+              totalEl.title = t('compTotalTip', { tok: totalEstTokens.toLocaleString(), bytes: safeTotalBytes.toLocaleString() });
+            }
+            barEl.innerHTML = activeSegs
+              .map((s) => {
+                const mediaNote = s.key === 'media' && s.mediaCount > 0 ? ` (${s.mediaCount} ${s.mediaCount === 1 ? t('itemOne') : t('itemMany')})` : '';
+                const tip = escapeHtml(`${s.label}${mediaNote}: ~${s.estTokens.toLocaleString()} ${t('estTokUnit')} (${s.pct.toFixed(1)}%)`);
+                return `<div class="comp-seg ${s.bgClass}" style="width:${s.widthPct.toFixed(2)}%" title="${tip}"></div>`;
+              })
+              .join('');
+            legendEl.innerHTML = activeSegs
+              .map((s) => {
+                const mediaNote = s.key === 'media' && s.mediaCount > 0 ? ` (${s.mediaCount})` : '';
+                const tip = escapeHtml(`${s.label}${mediaNote}: ~${s.estTokens.toLocaleString()} ${t('estTokUnit')} (${s.pct.toFixed(1)}%)`);
+                const labelSafe = escapeHtml(`${s.label}${mediaNote}`);
+                const pctSafe = escapeHtml(`${s.pct.toFixed(1)}%`);
+                const tokSafe = escapeHtml(fmtEstTokShort(s.estTokens));
+                return `<span class="comp-legend-item" title="${tip}"><span class="comp-dot ${s.bgClass}"></span><span>${labelSafe}</span><span class="mono">${pctSafe}</span><span class="muted-note mono">(${tokSafe})</span></span>`;
+              })
+              .join('');
+          }
+        }
+      }
+
+      if (subBadgeEl) {
+        const subDeleg = Math.round(toFiniteNonNeg(sub?.subagentDelegations) ?? 0);
+        const subTurns = Math.round(toFiniteNonNeg(sub?.subagentTurns) ?? 0);
+        const priTurns = Math.round(toFiniteNonNeg(sub?.primaryTurns) ?? 0);
+        const priTools = Math.round(toFiniteNonNeg(sub?.primaryToolCalls) ?? 0);
+        const subTools = Math.round(toFiniteNonNeg(sub?.subagentToolCalls) ?? 0);
+        const subTrafficTok = Math.round(
+          toFiniteNonNeg(sub?.subagentTrafficEstTokens) ??
+          toFiniteNonNeg(sub?.subagentResultEstTokens) ??
+          0
+        );
+        const subShare = Math.min(100, toFiniteNonNeg(sub?.subagentSharePct) ?? 0);
+
+        if (subDeleg > 0 || subTurns > 0) {
+          const countPart = subDeleg > 0
+            ? (subDeleg === 1 ? t('subagentCountOne') : t('subagentCountMany', { n: subDeleg }))
+            : (subTurns === 1 ? t('subTurnCountOne') : t('subTurnCountMany', { n: subTurns }));
+          const sharePart = subShare > 0 ? ` (${Math.round(subShare)}%)` : '';
+          subBadgeEl.textContent = t('subagentsLabel', { count: countPart, share: sharePart });
+          subBadgeEl.title = t('subagentTip', {
+            deleg: subDeleg,
+            priT: priTurns,
+            subT: subTurns,
+            priC: priTools,
+            subC: subTools,
+            tok: subTrafficTok.toLocaleString(),
+            share: subShare.toFixed(1)
+          });
+          subBadgeEl.classList.remove('hidden');
+        } else {
+          subBadgeEl.textContent = '';
+          subBadgeEl.title = '';
+          subBadgeEl.classList.add('hidden');
+        }
+      }
+    }
+
+    function renderKvCacheCard(kv) {
+      if (!kv) return;
+      const hitEl = document.getElementById('kv-hit-rate');
+      const ctxEl = document.getElementById('kv-ctx-tokens');
+      const bustEl = document.getElementById('kv-bust-count');
+      const wasteEl = document.getElementById('kv-wasted-tokens');
+      const wmEl = document.getElementById('kv-watermark-badge');
+      const tempEl = document.getElementById('kv-temp-badge');
+      const ttlEl = document.getElementById('kv-ttl-badge');
+      const modelEl = document.getElementById('kv-model-badge');
+      const savingsEl = document.getElementById('kv-cost-savings');
+      const loopBadgeEl = document.getElementById('kv-loop-badge');
+      const loopRowEl = document.getElementById('kv-loop-row');
+      const turnsRowEl = document.getElementById('kv-turns-chart-row');
+      const turnsLabelEl = document.getElementById('kv-turns-chart-label');
+      const turnsBarsEl = document.getElementById('kv-turns-bars');
+      const deltasRowEl = document.getElementById('kv-top-deltas-row');
+      const causesEl = document.getElementById('kv-bust-causes');
+
+      if (!kv.transcriptFound || !kv.turnsWithUsage) {
+        if (hitEl) hitEl.innerText = '--%';
+        if (ctxEl) { ctxEl.innerText = '0 tok'; ctxEl.title = ''; }
+        if (bustEl) bustEl.innerText = '0';
+        if (wasteEl) { wasteEl.innerText = '0'; wasteEl.title = ''; }
+        if (wmEl) {
+          wmEl.className = 'meta-tag is-ok';
+          wmEl.innerText = t('wmOk');
+          wmEl.title = '';
+        }
+        if (tempEl) {
+          tempEl.className = 'meta-tag';
+          tempEl.innerText = t('tempCold');
+        }
+        if (ttlEl) {
+          ttlEl.className = 'meta-tag';
+          ttlEl.innerText = 'TTL: --';
+          ttlEl.title = '';
+        }
+        if (modelEl) modelEl.classList.add('hidden');
+        if (savingsEl) { savingsEl.classList.add('hidden'); savingsEl.title = ''; }
+        if (loopBadgeEl) loopBadgeEl.classList.add('hidden');
+        if (loopRowEl) loopRowEl.classList.add('hidden');
+        if (turnsRowEl) turnsRowEl.classList.add('hidden');
+        if (deltasRowEl) deltasRowEl.classList.add('hidden');
+        if (causesEl) causesEl.innerHTML = `<span class="muted-note">${escapeHtml(t('noTranscriptUsage'))}</span>`;
+        renderContextComposition(
+          kv.transcriptFound ? kv.contextComposition : null,
+          kv.transcriptFound ? kv.subagentBreakdown : null
+        );
+        syncKvTtlState(null);
+        updateHandoffButtonStyle('none');
+        return;
+      }
+
+      const warnK = Math.round((kv.warnTokens || 130000) / 1000);
+      const critK = Math.round((kv.criticalTokens || 160000) / 1000);
+      const winK = kv.modelProfile?.windowTokens ? Math.round(kv.modelProfile.windowTokens / 1000) : 200;
+      const winSrc = kv.windowSource || kv.modelProfile?.windowSource || 'profile';
+      const ttlSrc = kv.ttlSource || 'profile';
+      const writeMult = Number(kv.cacheWriteMultiplier || kv.modelProfile?.cacheWriteMultiplier || 1);
+
+      if (hitEl) hitEl.innerText = `${(Number(kv.weightedHitRate || 0) * 100).toFixed(1)}%`;
+      if (ctxEl) {
+        const curK = Math.round((kv.currentContextTokens || 0) / 1000);
+        ctxEl.innerText = `${curK}k / ${winK}k`;
+        ctxEl.title = t('ctxTip', {
+          cur: (kv.currentContextTokens || 0).toLocaleString(),
+          win: (kv.modelProfile?.windowTokens || 200000).toLocaleString(),
+          src: winSrc
+        });
+      }
+      if (bustEl) bustEl.innerText = String(kv.bustCount || 0);
+      if (wasteEl) {
+        wasteEl.innerText = `${Math.round((kv.wastedTokensTotal || 0) / 1000)}k tok`;
+        const wastedUsd = Number(kv.estimatedWastedUsd || 0);
+        wasteEl.title = wastedUsd > 0
+          ? t('wasteTipUsd', { usd: fmtUsd(wastedUsd), tok: (kv.wastedTokensTotal || 0).toLocaleString() })
+          : t('wasteTipTok', { tok: (kv.wastedTokensTotal || 0).toLocaleString() });
+      }
+
+      if (wmEl) {
+        if (kv.watermark === 'critical') {
+          wmEl.className = 'meta-tag is-danger';
+          wmEl.innerText = t('wmCritical', { k: critK });
+        } else if (kv.watermark === 'warn') {
+          wmEl.className = 'meta-tag is-warn';
+          wmEl.innerText = t('wmHigh', { k: warnK });
+        } else {
+          wmEl.className = 'meta-tag is-ok';
+          wmEl.innerText = t('wmOk');
+        }
+        wmEl.title = t('wmTip', { win: winK, src: winSrc, warn: warnK, crit: critK });
+      }
+
+      if (tempEl) {
+        const temp = String(kv.cacheTemperature || 'cold').toLowerCase();
+        if (temp === 'hot') {
+          tempEl.className = 'meta-tag is-ok';
+          tempEl.innerText = t('tempHot');
+        } else if (temp === 'warm') {
+          tempEl.className = 'meta-tag is-info';
+          tempEl.innerText = t('tempWarm');
+        } else {
+          tempEl.className = 'meta-tag';
+          tempEl.innerText = t('tempCold');
+        }
+      }
+
+      if (modelEl) {
+        if (kv.modelProfile?.id) {
+          modelEl.innerText = `${kv.modelProfile.id}`;
+          modelEl.title = t('modelTip', {
+            model: kv.currentModel || 'default',
+            win: winK,
+            src: winSrc,
+            disc: Math.round((kv.cacheDiscountRate ?? 0.9) * 100),
+            mult: writeMult.toFixed(2)
+          });
+          modelEl.classList.remove('hidden');
+        } else {
+          modelEl.classList.add('hidden');
+        }
+      }
+
+      if (savingsEl) {
+        const pct = Number(kv.estimatedCostSavingsPct || 0);
+        const savedUsd = Number(kv.estimatedSavedUsd);
+        const hasUsd = Number.isFinite(savedUsd) && Math.abs(savedUsd) >= 0.005;
+        if (hasUsd) {
+          savingsEl.innerText = savedUsd >= 0
+            ? t('estSavedUsd', { pct: Math.round(pct), usd: fmtUsd(savedUsd) })
+            : t('estNegUsd', { pct: Math.round(pct), usd: fmtUsd(savedUsd) });
+        } else {
+          savingsEl.innerText = t('estSavedPct', { pct: Math.round(pct) });
+        }
+        savingsEl.className = pct < 0 ? 'meta-tag is-warn' : 'meta-tag is-ok';
+        const writeHint = kv.cacheCreationTokensTotal ? t('savingsWritesPart', { k: Math.round(kv.cacheCreationTokensTotal / 1000) }) : '';
+        savingsEl.title = t('savingsTip', {
+          cost: fmtUsd(kv.estimatedInputCostUsd || 0),
+          saved: fmtUsd(kv.estimatedSavedUsd || 0),
+          mult: writeMult.toFixed(2),
+          writes: writeHint
+        });
+        savingsEl.classList.remove('hidden');
+      }
+
+      if (ttlEl) {
+        if (kv.ttlStatus === 'expired') {
+          ttlEl.className = 'meta-tag is-danger';
+          ttlEl.innerText = t('ttlExpiredBadge', { idle: fmtSec(kv.idleSeconds) });
+        } else if (kv.ttlStatus === 'expiring') {
+          ttlEl.className = 'meta-tag is-warn';
+          ttlEl.innerText = t('ttlLeftBadge', { rem: fmtSec(kv.ttlRemainingSec) });
+        } else if (kv.ttlStatus === 'warm') {
+          ttlEl.className = 'meta-tag is-info';
+          ttlEl.innerText = t('ttlLeftBadge', { rem: fmtSec(kv.ttlRemainingSec) });
+        } else {
+          ttlEl.className = 'meta-tag';
+          ttlEl.innerText = t('ttlColdBadge');
+        }
+        const gapTip = kv.maxWarmHitGapSec ? t('ttlGapPart', { gap: fmtSec(kv.maxWarmHitGapSec) }) : '';
+        ttlEl.title = t('ttlTip', { ttl: fmtSec(kv.cacheTtlSec), src: ttlSrc, gap: gapTip });
+      }
+
+      updateHandoffButtonStyle(kv.compactAdvice);
+      syncKvTtlState(kv);
+      renderContextComposition(kv.contextComposition, kv.subagentBreakdown);
+
+      const lw = kv.loopWatch;
+      if (lw && (lw.status === 'warn' || lw.status === 'critical')) {
+        const isCrit = lw.status === 'critical';
+        if (loopBadgeEl) {
+          loopBadgeEl.className = isCrit ? 'meta-tag is-danger' : 'meta-tag is-warn';
+          loopBadgeEl.innerText = lw.editFailOscillations >= 2
+            ? t('oscillationBadge', { n: lw.editFailOscillations })
+            : t('loopBadge', { n: lw.maxRepeatCount });
+          loopBadgeEl.classList.remove('hidden');
+        }
+        if (loopRowEl) {
+          const parts = [];
+          if (lw.editFailOscillations >= 2) {
+            const fTxt = Array.isArray(lw.oscillatingFiles) && lw.oscillatingFiles.length > 0 ? ` (${lw.oscillatingFiles.join(', ')})` : '';
+            parts.push(t('oscillationPart', { n: lw.editFailOscillations, files: fTxt }));
+          }
+          const showRepeat = lw.reason === 'repeat_loop' || lw.reason === 'repeat_and_oscillation';
+          if (showRepeat && lw.maxRepeatCount >= 3) {
+            parts.push(t('repeatPart', { pct: Math.round((lw.repeatRate || 0) * 100), tool: lw.topRepeatedCall || 'tool', n: lw.maxRepeatCount }));
+          }
+          loopRowEl.className = isCrit ? 'alert-strip is-danger' : 'alert-strip is-warn';
+          loopRowEl.innerText = t('convergenceWatch', { status: lw.status.toUpperCase(), parts: parts.join(' + ') });
+          loopRowEl.classList.remove('hidden');
+        }
+      } else {
+        if (loopBadgeEl) loopBadgeEl.classList.add('hidden');
+        if (loopRowEl) loopRowEl.classList.add('hidden');
+      }
+
+      const turns = Array.isArray(kv.recentTurns) ? kv.recentTurns : [];
+      if (turnsRowEl && turnsBarsEl) {
+        if (turns.length > 0) {
+          turnsRowEl.classList.remove('hidden');
+          if (turnsLabelEl) turnsLabelEl.innerText = t('recentTurnsLabel', { n: turns.length });
+          turnsBarsEl.innerHTML = turns.map((turnItem) => {
+            const pctVal = Math.max(0, Math.min(100, Math.round(Number(turnItem.hitRate || 0) * 100)));
+            const hPct = Math.max(10, pctVal);
+            const cls = turnItem.isBust
+              ? 'is-bust'
+              : pctVal >= 85
+                ? 'is-good'
+                : pctVal >= 50
+                  ? 'is-mid'
+                  : 'is-low';
+            const deltaStr = Number(turnItem.deltaTokens || 0) >= 0 ? `+${Math.round((turnItem.deltaTokens || 0) / 1000)}k` : `${Math.round((turnItem.deltaTokens || 0) / 1000)}k`;
+            const tip = escapeHtml(
+              t('turnBarTip', {
+                turn: turnItem.turn,
+                pct: pctVal,
+                ctx: Math.round((turnItem.ctxTokens || 0) / 1000),
+                delta: deltaStr,
+                tool: turnItem.triggerTool ? ` | ${turnItem.triggerTool}` : '',
+                bust: turnItem.isBust ? t('turnBustTag', { cause: turnItem.bustCause }) : ''
+              })
+            );
+            return `<div class="turn-bar-col" title="${tip}"><div class="turn-bar ${cls}" style="height:${hPct}%"></div></div>`;
+          }).join('');
+        } else {
+          turnsRowEl.classList.add('hidden');
+        }
+      }
+
+      if (deltasRowEl) {
+        const deltas = Array.isArray(kv.topContextDeltas) ? kv.topContextDeltas : [];
+        if (deltas.length > 0) {
+          deltasRowEl.classList.remove('hidden');
+          deltasRowEl.innerHTML =
+            `<span class="muted-note">${escapeHtml(t('topGrowth'))}</span>` +
+            deltas.map((d) => {
+              const kStr = `+${(Number(d.deltaTokens || 0) / 1000).toFixed(1)}k`;
+              const safeLbl = escapeHtml(d.label || d.tool || 'tool');
+              const turnNum = Number(d.turn || 0);
+              const deltaNum = Number(d.deltaTokens || 0);
+              return `<span class="delta-chip" title="${escapeHtml(t('turnDeltaTip', { turn: turnNum, delta: deltaNum }))}"><strong>${kStr}</strong> ${safeLbl}</span>`;
+            }).join('');
+        } else {
+          deltasRowEl.classList.add('hidden');
+        }
+      }
+
+      if (causesEl) {
+        const c = kv.bustsByCause || {};
+        const dupCnt = Number(kv.duplicateReadCount) || 0;
+        causesEl.innerHTML = [
+          `<span class="muted-note">${escapeHtml(t('bustsLabel'))}</span>`,
+          `<span>${escapeHtml(t('bustTtl'))} <strong>${Number(c.ttl_idle_expiry) || 0}</strong></span>`,
+          `<span>${escapeHtml(t('bustCompact'))} <strong>${Number(c.compaction_or_truncation) || 0}</strong></span>`,
+          `<span>${escapeHtml(t('bustModel'))} <strong>${Number(c.model_switch) || 0}</strong></span>`,
+          `<span>${escapeHtml(t('bustSysMsg'))} <strong>${Number(c.system_injection) || 0}</strong></span>`,
+          `<span>${escapeHtml(t('bustMedia'))} <strong>${Number(c.multimodal_media) || 0}</strong></span>`,
+          `<span>${escapeHtml(t('bustDrift'))} <strong>${Number(c.prefix_drift) || 0}</strong></span>`,
+          dupCnt > 0 ? `<span class="val-warn">${escapeHtml(t('bustDupReads'))} <strong>${dupCnt}</strong></span>` : '',
+          kv.cacheCreationTokensTotal ? `<span title="${escapeHtml(t('bustWritesTip', { mult: writeMult.toFixed(2) }))}">${escapeHtml(t('bustWrites'))} <strong>${Math.round(kv.cacheCreationTokensTotal / 1000)}k</strong></span>` : '',
+          kv.thinkingTokensTotal ? `<span title="${escapeHtml(t('bustThinkTip'))}">${escapeHtml(t('bustThink'))} <strong>${Math.round(kv.thinkingTokensTotal / 1000)}k</strong></span>` : ''
+        ].filter(Boolean).join('');
+      }
+    }
+
+    async function runMaintenanceVacuum() {
+      const btn = document.getElementById('vacuum-btn');
+      if (btn) btn.innerText = t('vacuumingBtn');
+      try {
+        const res = await apiFetch('/api/maintenance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'vacuum', maxAgeDays: 14 })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (btn) btn.innerText = data.reclaimedBytes > 0 ? t('vacuumFreedBtn', { size: formatBytes(data.reclaimedBytes) }) : t('vacuumOkBtn');
+        setTimeout(() => { if (btn) btn.innerText = t('vacuumBtn'); }, 2500);
+        refreshData(true);
+      } catch (err) {
+        if (btn) btn.innerText = t('vacuumBtn');
+        alert(t('alertMaintFail', { msg: err.message }));
+      }
+    }
+
+    async function handlePurgeClick() {
+      const params = new URLSearchParams(window.location.search);
+      const convId = window.sidecar?.conversationId || params.get('conversationId') || '';
+
+      let confirmMsg = t('confirmPurgeConv');
+      if (currentScope === 'app') {
+        confirmMsg = t('confirmPurgeApp');
+      } else if (currentScope === 'lifetime') {
+        confirmMsg = t('confirmPurgeLifetime');
+      }
+
+      if (!confirm(confirmMsg)) return;
+      ++refreshSeq;
+
+      try {
+        const res = await apiFetch('/api/purge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: currentScope, conversationId: convId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        refreshData(true);
+      } catch (err) {
+        alert(t('alertPurgeFail', { msg: err.message }));
+      }
+    }
+
+    applyLanguageUi();
+    refreshData(true);
+    pollTimer = setInterval(() => refreshData(false), 3000);
+    window.addEventListener('beforeunload', () => {
+      stopKvTtlTimer();
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (handoffCopyResetTimer !== null) {
+        clearTimeout(handoffCopyResetTimer);
+        handoffCopyResetTimer = null;
+      }
+    });
+  </script>
+</body>
+</html>

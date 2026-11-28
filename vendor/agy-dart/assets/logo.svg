@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="dartGrad" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="52%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="boltGrad" x1="48" y1="30" x2="86" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E0F2FE"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded shield container with ~10% safe margin -->
+  <path d="M64 14L108 30V64C108 90.5 89.2 108.4 64 115C38.8 108.4 20 90.5 20 64V30L64 14Z" fill="url(#dartGrad)"/>
+  <path d="M64 19.5L102.5 33.5V63.5C102.5 87 86.2 103 64 109C41.8 103 25.5 87 25.5 63.5V33.5L64 19.5Z" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="2.5"/>
+  <!-- Stylized dart / lightning arrow -->
+  <path d="M72 32L42 68H61L55 96L86 58H67L72 32Z" fill="url(#boltGrad)"/>
+</svg>

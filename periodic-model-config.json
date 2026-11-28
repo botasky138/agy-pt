@@ -124,5 +124,13 @@
     "Ne": "#f43f5e",
     "Ar": "#14b8a6",
     "Kr": "#f59e0b"
+  },
+  "composerHud": {
+    "enabled": true,
+    "contextRing": true,
+    "speedBadge": true,
+    "quotaHalo": true,
+    "quotaHaloMode": "dual",
+    "quotaHaloTone": "semantic"
   }
 }

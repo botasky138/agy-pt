@@ -18,6 +18,12 @@
 - **表外模型与第三方模型分区**
   - 元素表下方单独放置 `3.8 Flash` 模块与升级后的 `Orchestrator` 模块：完整适配原版三级级联结构（`Gemini 4 Neon` 4 档、`Gemini 4 Carbon` 3 档、`Gemini 4 Argon` 3 档、`Claude Opus 5.5` 3 档，及未来新增模型自动探测），各底层模型独立映射对应额度池。
   - 底部 `Other models` 展示 Claude、GPT、DeepSeek 等其他厂商模型。
+- **输入框实时 HUD（上下文圆环 + 生成速度 + 双圈额度光环）** *(v3.4.0 新增)*
+  - **双圈额度光环**：沿输入框圆角外框顺时针显示当前所选模型的剩余额度（默认 **双圈**：外圈绿 = 周额度，内圈蓝 = 5h 额度；单池模型显示单圈），点击详情面板可切换「双圈 / 低池 / 周 / 5h / 关闭」及「语义色 / 元素色」。
+  - **上下文圆环**：模型按钮旁紧凑显示当前对话上下文占比圆环（绿 `<65%` / 黄 `>=65%` / 红 `>=80%`）与缓存温度点，点击展开详情卡查看精确 Token 水位、缓存命中率、**1 秒实时 TTL 倒计时**与 `/compact` 时机建议。
+  - **生成速度徽章**：实时流式估算 + 基于 `transcript.jsonl` 的精准 `tok/s` 与会话平均速度。
+- **内置 `agy-dart` 一体化加速与上下文护栏** *(v3.4.0 新增)*
+  - 内置离线 [zou172866/agy-dart](https://github.com/zou172866/agy-dart)（MIT 协议，含 macOS 软链与 `ripgrep` 路径修复）：在环境满足 `Node.js >= 22` 时由 `./macos/install.sh` 或 `Install-AgyPT.ps1` 自动安装到 `~/.gemini/config/plugins/agy-dart` 并跑通 `doctor` 自检；支持 `--no-dart` / `-SkipDart` 按需跳过。
 - **实时额度边框（单层 / 内外双层）**
   - 自动静默解析原版 `View Usage` 实时额度池，直接用顺时针 SVG 边框长度展示剩余额度：**满额整圈显现，消耗后按比例缩短，用完时边框消失**。
   - 同一模型同时存在每周与 5 小时两个额度池时（如 Gemini 模型、Claude 和 GPT 模型），以内外两层边框同时展示（**外框绿 = 周额度**，**内框蓝 = 5h 额度**）；单池模型（如 `Gemini 4 Argon` 仅周额度）仅展示单层外框。
@@ -29,14 +35,16 @@
 
 | 文件 | 适用平台 | 作用 |
 | --- | --- | --- |
-| `periodic-model-picker.js` | macOS / Windows | 元素周期表模型选择器核心模块（Shadow DOM 隔离，v3.3.2） |
-| `periodic-model-config.json` | macOS / Windows | 配置文件（元素别名绑定、即将发布标记、经典模型白名单与配色） |
-| `macos/install.sh` | macOS | macOS 一键安装 / 更新 / 卸载脚本（自动拉取全局中文汉化基座并生成 `~/Applications/Antigravity PT.app`） |
-| `macos/launch-agy-pt.sh` | macOS | macOS 统一启动器（自动注入全局中文汉化 + 元素周期表，或联动 Antigravity-Hans 二进制） |
+| `periodic-model-picker.js` | macOS / Windows | 元素周期表模型选择器与输入框 HUD 核心模块（Shadow DOM 隔离，v3.4.0） |
+| `periodic-model-config.json` | macOS / Windows | 配置文件（元素别名绑定、即将发布标记、经典模型白名单、配色与 `composerHud` 默认项） |
+| `telemetry-bridge.mjs` | macOS / Windows | 跨平台零依赖会话遥测解析与 CDP 推送桥接（支持 `--dump` 与 `--port`） |
+| `vendor/agy-dart/` | macOS / Windows | 内置离线 [agy-dart](https://github.com/zou172866/agy-dart)（v1.3.0，MIT，含 macOS 软链与 `rg` 路径修复） |
+| `macos/install.sh` | macOS | macOS 一键安装 / 更新 / 卸载脚本（自动拉取全局汉化、安装内置 `agy-dart` 并生成 `~/Applications/Antigravity PT.app`） |
+| `macos/launch-agy-pt.sh` | macOS | macOS 统一启动器（自动注入全局中文汉化 + 元素周期表 + 输入框 HUD，或联动 Antigravity-Hans） |
 | `macos/sync-hans-overlay.sh` | macOS | 从 macOS 版 `antigravity-hans-macos-*` 提取内嵌汉化并与本模块合成 `antigravity-hans-overlay.js` |
-| `macos/agy-pt-cdp.pl` | macOS | 零第三方依赖的原生 Perl CDP 注入守护进程（支持全局汉化 + 周期表双注入、多窗口与热重载） |
+| `macos/agy-pt-cdp.pl` | macOS | 零第三方依赖的原生 Perl CDP 注入与只读遥测守护进程（支持汉化 + 周期表 + 输入框实时指标推送） |
 | `Sync-HansOverlay.ps1` | Windows | 自动提取 `antigravity-hans-windows-amd64.exe` 内嵌汉化并与本模块合成 `antigravity-hans-overlay.js` |
-| `Install-AgyPT.ps1` | Windows | Windows 一键安装 / 更新 / 卸载脚本 |
+| `Install-AgyPT.ps1` | Windows | Windows 一键安装 / 更新 / 卸载脚本（支持自动安装内置 `agy-dart`，可用 `-SkipDart` 跳过） |
 
 ## 安装与使用（macOS）
 
@@ -158,7 +166,9 @@ powershell -ExecutionPolicy Bypass -File .\Install-AgyPT.ps1 -Uninstall
   - `registerVirtualHook(fn)`：接管未发布虚拟槽位的点击回调
   - `refreshUsage()`：重新静默拉取实时额度用量
   - `getRegistrySnapshot()`：导出全部 118 元素槽位、档位与额度快照
+  - `getHudState()` / `setHudPrefs(patch)` / `updateTelemetry(data)`：读取/更新输入框 HUD 状态、光环模式与遥测数据
 
-## License
+## License & Acknowledgments
 
-[MIT](./LICENSE)
+- 本项目主体基于 [MIT License](./LICENSE) 开源。
+- 内置组件 `vendor/agy-dart/` 来自 [zou172866/agy-dart](https://github.com/zou172866/agy-dart)（MIT License），保留其原始版权与第三方许可声明（见 `vendor/agy-dart/LICENSE` 与 `vendor/agy-dart/THIRD_PARTY_NOTICES.md`）。

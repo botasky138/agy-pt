@@ -23,6 +23,10 @@ CREATE_APP=1
 LINK_BIN=0
 NO_HANS=0
 UPDATE_HANS=0
+WITH_DART=1
+DART_MODE=""
+DART_TARGET=""
+UNINSTALL_DART=0
 
 usage() {
   cat <<'EOF'
@@ -35,6 +39,11 @@ usage() {
       --hans-overlay <file> 指定本地全局中文汉化脚本文件（离线安装时使用）
       --update-hans         强制重新拉取最新官方 Antigravity-Hans 全局中文汉化基座
       --no-hans             不下载/不启用全局中文汉化（仅英文界面 + 中文元素周期表）
+      --with-dart           同时安装内置 agy-dart 加速与上下文护栏插件（默认开启）
+      --no-dart             跳过安装 agy-dart 插件（仅安装界面增强）
+      --dart-mode <mode>    设置 agy-dart 保护模式: host-45k（默认）| fast-32k | balanced-16k | strict-8k | no-read-hook
+      --dart-target <dir>   指定 agy-dart 安装目标目录（仅测试或自定义目录时使用）
+      --uninstall-dart      配合 --uninstall 使用时一并卸载 agy-dart 插件
   -m, --mode <mode>         写入快捷应用默认模式: auto（默认）| hans | standalone
   -t, --target <target>     目标客户端: app（Antigravity，默认）| ide（Antigravity IDE）
       --app-dir <dir>       快捷启动 .app 生成目录（默认: ~/Applications）
@@ -62,6 +71,18 @@ while [ $# -gt 0 ]; do
       UPDATE_HANS=1; shift ;;
     --no-hans)
       NO_HANS=1; shift ;;
+    --with-dart)
+      WITH_DART=1; shift ;;
+    --no-dart)
+      WITH_DART=0; shift ;;
+    --dart-mode)
+      [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
+      DART_MODE="$2"; shift 2 ;;
+    --dart-target)
+      [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
+      DART_TARGET="$2"; shift 2 ;;
+    --uninstall-dart)
+      UNINSTALL_DART=1; shift ;;
     -m|--mode)
       [ $# -ge 2 ] || { echo "错误: $1 需要参数" >&2; exit 1; }
       LAUNCHER_MODE="$2"; shift 2 ;;
@@ -192,6 +213,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
     for f in \
       "periodic-model-picker.js" \
       "periodic-model-config.json" \
+      "telemetry-bridge.mjs" \
       "sync-hans-overlay.sh" \
       "launch-agy-pt.sh" \
       "agy-pt-cdp.pl" \
@@ -232,6 +254,18 @@ if [ "$UNINSTALL" -eq 1 ]; then
   fi
 
   echo "卸载完成。Antigravity 原版应用未受任何影响。"
+  if [ "$UNINSTALL_DART" -eq 1 ] && [ -f "$REPO_DIR/vendor/agy-dart/scripts/install.mjs" ]; then
+    for nc in "$(command -v node 2>/dev/null || true)" "$HOME/.local/bin/node" "/opt/homebrew/bin/node" "/usr/local/bin/node"; do
+      if [ -n "$nc" ] && [ -x "$nc" ]; then
+        if [ -n "$DART_TARGET" ]; then
+          "$nc" "$REPO_DIR/vendor/agy-dart/scripts/install.mjs" uninstall --target "$DART_TARGET" || true
+        else
+          "$nc" "$REPO_DIR/vendor/agy-dart/scripts/install.mjs" uninstall || true
+        fi
+        break
+      fi
+    done
+  fi
   exit 0
 fi
 
@@ -259,6 +293,9 @@ cp -f "$REPO_DIR/periodic-model-picker.js" "$TARGET_DIR/periodic-model-picker.js
 cp -f "$SCRIPT_DIR/sync-hans-overlay.sh"   "$TARGET_DIR/sync-hans-overlay.sh"
 cp -f "$SCRIPT_DIR/launch-agy-pt.sh"       "$TARGET_DIR/launch-agy-pt.sh"
 cp -f "$SCRIPT_DIR/agy-pt-cdp.pl"          "$TARGET_DIR/agy-pt-cdp.pl"
+if [ -f "$REPO_DIR/telemetry-bridge.mjs" ]; then
+  cp -f "$REPO_DIR/telemetry-bridge.mjs" "$TARGET_DIR/telemetry-bridge.mjs"
+fi
 chmod +x "$TARGET_DIR/sync-hans-overlay.sh" "$TARGET_DIR/launch-agy-pt.sh" "$TARGET_DIR/agy-pt-cdp.pl"
 echo "已安装核心脚本到: $TARGET_DIR"
 
@@ -402,8 +439,8 @@ EOF
     /usr/bin/plutil -replace CFBundleDisplayName -string "$WRAPPER_NAME" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleName -string "$WRAPPER_NAME" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace CFBundleIdentifier -string "$WRAPPER_BUNDLE_ID" "$WRAPPER_APP/Contents/Info.plist"
-    /usr/bin/plutil -replace CFBundleShortVersionString -string "3.3.0" "$WRAPPER_APP/Contents/Info.plist"
-    /usr/bin/plutil -replace CFBundleVersion -string "330" "$WRAPPER_APP/Contents/Info.plist"
+    /usr/bin/plutil -replace CFBundleShortVersionString -string "3.4.0" "$WRAPPER_APP/Contents/Info.plist"
+    /usr/bin/plutil -replace CFBundleVersion -string "340" "$WRAPPER_APP/Contents/Info.plist"
     /usr/bin/plutil -replace LSUIElement -bool true "$WRAPPER_APP/Contents/Info.plist"
   else
     mkdir -p "$WRAPPER_APP/Contents/MacOS" "$WRAPPER_APP/Contents/Resources"
@@ -434,9 +471,9 @@ EOF
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>3.3.0</string>
+  <string>3.4.0</string>
   <key>CFBundleVersion</key>
-  <string>330</string>
+  <string>340</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>LSUIElement</key>
@@ -474,6 +511,37 @@ if [ "$LINK_BIN" -eq 1 ]; then
   mkdir -p "$BIN_DIR"
   ln -sf "$TARGET_DIR/launch-agy-pt.sh" "$BIN_DIR/agy-pt"
   echo "已创建命令行快捷方式: $BIN_DIR/agy-pt"
+fi
+
+# 6. 自动安装内置 agy-dart 加速与上下文护栏插件（需要 Node.js >= 22）
+DART_INSTALLER="$REPO_DIR/vendor/agy-dart/scripts/install.mjs"
+if [ "$WITH_DART" -eq 1 ] && [ -f "$DART_INSTALLER" ]; then
+  NODE_BIN=""
+  for nc in \
+    "$(command -v node 2>/dev/null || true)" \
+    "$HOME/.local/bin/node" \
+    "/opt/homebrew/bin/node" \
+    "/usr/local/bin/node"
+  do
+    if [ -n "$nc" ] && [ -x "$nc" ]; then
+      NODE_MAJOR="$("$nc" -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
+      if [ "$NODE_MAJOR" -ge 22 ] 2>/dev/null; then
+        NODE_BIN="$nc"
+        break
+      fi
+    fi
+  done
+
+  if [ -n "$NODE_BIN" ]; then
+    echo ""
+    echo "正在安装内置 agy-dart 插件（加速批处理 + 上下文护栏）..."
+    DART_ARGS=("$DART_INSTALLER" "install" "--with-devtools")
+    [ -n "$DART_MODE" ] && DART_ARGS+=("--mode" "$DART_MODE")
+    [ -n "$DART_TARGET" ] && DART_ARGS+=("--target" "$DART_TARGET")
+    PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" "$NODE_BIN" "${DART_ARGS[@]}"
+  else
+    echo "提示: 未检测到 Node.js >= 22，已跳过内置 agy-dart 安装（AGY-PT 界面增强与周期表可正常使用）。"
+  fi
 fi
 
 echo ""
